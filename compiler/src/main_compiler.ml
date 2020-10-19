@@ -357,9 +357,7 @@ let main () =
     let translate_var = Conv.var_of_cvar tbl in
     
     let memory_analysis up : Compiler.stack_alloc_oracles =
-      let res = StackAlloc.memory_analysis pp_comp_ferr ~debug:!debug tbl up in
-      Format.printf "%a@." (StackAlloc.pp_oracle tbl up) res;
-      res
+      StackAlloc.memory_analysis pp_comp_ferr ~debug:!debug tbl up
      in
 
     let global_regalloc fds =

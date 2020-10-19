@@ -17,6 +17,7 @@ let help_intrinsics = ref false
 let lea = ref false
 let set0 = ref false
 let model = ref Normal
+let print_stack_alloc = ref false
 
 let poptions = [
     Compiler.Typing
@@ -121,6 +122,7 @@ let options = [
     "-nowarning", Arg.Unit (nowarning), ": do no print warning";
     "--help-intrinsics", Arg.Set help_intrinsics, "List the set of intrinsic operators";
     "-pall"    , Arg.Unit set_all_print, "print program after each compilation steps";
+    "-print-stack-alloc", Arg.Set print_stack_alloc, ": print the result of the stack alloc oracle"
   ] @  List.map print_option poptions @ List.map stop_after_option poptions
 
 let usage_msg = "Usage : jasminc [option] filename"
