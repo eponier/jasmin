@@ -39,6 +39,7 @@ Unset Printing Implicit Defensive.
 Local Open Scope vmap.
 Local Open Scope seq_scope.
 
+(* TODO téméraire : wsize_size dans positive plutôt que dans Z ? *)
 Definition size_of (t:stype) :=
   match t with
   | sword sz => wsize_size sz
@@ -357,7 +358,7 @@ Definition set_word rmap (x:var) sr ws :=
    other variables, and remains the zone associated to [x]. It is a safe
    approximation.
 *)
-(* [set_word], [set_stack_ptr] and [set_arr_word] could be factorized? *)
+(* [set_word], [set_stack_ptr] and [set_arr_word] could be factorized? -> think more about it *)
 Definition set_arr_word (rmap:region_map) (x:var) ofs ws :=
   Let sr := get_sub_region rmap x in
   Let _ := check_align sr ws in
