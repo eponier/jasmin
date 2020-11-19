@@ -319,12 +319,12 @@ End CoreMem.
  * -------------------------------------------------------------------- *)
 
 Notation Uptr := U64 (only parsing).
-Notation pointer := (word Uptr) (only parsing).
+Notation ptr := (word Uptr) (only parsing).
 
-Definition no_overflow (p: pointer) (sz: Z) : bool :=
+Definition no_overflow (p: ptr) (sz: Z) : bool :=
   (wunsigned p + sz <=? wbase Uptr)%Z.
 
-Definition disjoint_zrange (p: pointer) (s: Z) (p': pointer) (s': Z) :=
+Definition disjoint_zrange (p: ptr) (s: Z) (p': ptr) (s': Z) :=
   [/\ no_overflow p s,
       no_overflow p' s' &
       wunsigned p + s <= wunsigned p' \/
@@ -333,7 +333,7 @@ Definition disjoint_zrange (p: pointer) (s: Z) (p': pointer) (s': Z) :=
 Definition disjoint_range p s p' s' :=
   disjoint_zrange p (wsize_size s) p' (wsize_size s').
 
-Definition between (pstk : pointer)  (sz : Z) (p : pointer) (s : wsize) : bool :=
+Definition between (pstk : ptr)  (sz : Z) (p : ptr) (s : wsize) : bool :=
   ((wunsigned pstk <=? wunsigned p) && (wunsigned p + wsize_size s <=? wunsigned pstk + sz))%Z.
 
 Lemma between_leb pstk sz p s pstk' sz' :
@@ -356,7 +356,7 @@ Proof.
   move: (wunsigned_range b); Psatz.lia.
 Qed.
 
-Definition pointer_range (lo hi: pointer) : pred pointer :=
+Definition pointer_range (lo hi: ptr) : pred ptr :=
   λ p, (wunsigned lo <=? wunsigned p) && (wunsigned p <? wunsigned hi).
 
 Lemma pointer_range_between lo hi p :
@@ -371,7 +371,7 @@ Qed.
 (* -------------------------------------------------- *)
 (** Pointer arithmetic *)
   
-Instance Pointer : pointer_op pointer.
+Instance Pointer : pointer_op ptr.
 Proof.
 refine
   {| add p k   := (p + wrepr Uptr k)%R
@@ -419,22 +419,22 @@ Qed.
 Lemma mod_wsize_size z sz : z mod wbase Uptr mod wsize_size sz = z mod wsize_size sz.
 Proof. by rewrite -Znumtheory.Zmod_div_mod //; apply wsize_size_div_wbase. Qed.
 
-Lemma is_align_addE (ptr1 ptr2:pointer) sz : 
-  is_align ptr1 sz -> is_align (ptr1 + ptr2)%R sz = is_align ptr2 sz.
+Lemma is_align_addE (p1 p2:ptr) sz : 
+  is_align p1 sz -> is_align (p1 + p2)%R sz = is_align p2 sz.
 Proof.
   have hn := wsize_size_pos sz.
   move => /is_align_mod h; rewrite -!is_align_modE.
   by rewrite /wunsigned CoqWord.word.addwE -/(wbase Uptr) mod_wsize_size -Zplus_mod_idemp_l h.
 Qed.
 
-Lemma is_align_add (ptr1 ptr2:pointer) sz : 
-  is_align ptr1 sz -> is_align ptr2 sz -> is_align (ptr1 + ptr2)%R sz.
+Lemma is_align_add (p1 p2:ptr) sz : 
+  is_align p1 sz -> is_align p2 sz -> is_align (p1 + p2)%R sz.
 Proof. by move=> /is_align_addE ->. Qed.
 
-Lemma is_align_m sz sz' (ptr: pointer) :
+Lemma is_align_m sz sz' (p: ptr) :
   (sz' ≤ sz)%CMP →
-  is_align ptr sz →
-  is_align ptr sz'.
+  is_align p sz →
+  is_align p sz'.
 Proof.
   have wsnz s : wsize_size s ≠ 0.
   - by have := wsize_size_pos s.
@@ -495,31 +495,31 @@ Proof.
   case: eqP; Psatz.lia.
 Qed.
 
-Class memory (mem: Type) (CM: coreMem pointer mem) : Type :=
+Class memory (mem: Type) (CM: coreMem ptr mem) : Type :=
   Memory {
-      stack_root : mem -> pointer
-    ; stack_limit : mem -> pointer
-    ; frames : mem -> seq pointer
+      stack_root : mem -> ptr
+    ; stack_limit : mem -> ptr
+    ; frames : mem -> seq ptr
     ; alloc_stack : mem -> wsize -> Z -> Z -> exec mem (* alignement, size, extra-size *)
     ; free_stack : mem -> mem
-    ; init : seq (pointer * Z) → pointer → exec mem
+    ; init : seq (ptr * Z) → ptr → exec mem
 
-    ; stack_region_is_free : ∀ (m: mem) (p: pointer), wunsigned (stack_limit m) <= wunsigned p < wunsigned (head (stack_root m) (frames m)) → ~~ validw m p U8
+    ; stack_region_is_free : ∀ (m: mem) (p: ptr), wunsigned (stack_limit m) <= wunsigned p < wunsigned (head (stack_root m) (frames m)) → ~~ validw m p U8
     ; top_stack_below_root: ∀ (m: mem), wunsigned (head (stack_root m) (frames m)) <= wunsigned (stack_root m)
     }.
 
 Arguments Memory {mem CM} _ _ _ _ _ _ _.
 Arguments top_stack_below_root {mem CM} _.
 
-Definition top_stack {mem: Type} {CM: coreMem pointer mem} {M: memory CM} (m: mem) : pointer :=
+Definition top_stack {mem: Type} {CM: coreMem ptr mem} {M: memory CM} (m: mem) : ptr :=
   head (stack_root m) (frames m).
 
 Section SPEC.
-  Context mem (CM: coreMem pointer mem) (M: memory CM)
+  Context mem (CM: coreMem ptr mem) (M: memory CM)
     (m: mem) (ws:wsize) (sz: Z) (sz': Z) (m': mem).
   Let pstk := top_stack m'.
 
-  Definition top_stack_after_alloc (top: pointer) (ws: wsize) (sz: Z) : pointer :=
+  Definition top_stack_after_alloc (top: ptr) (ws: wsize) (sz: Z) : ptr :=
     do_align ws (top + wrepr Uptr (- sz)).
 
   Record alloc_stack_spec : Prop := mkASS {
@@ -580,7 +580,7 @@ Module Type MemoryT.
 
 Parameter mem : Type.
 
-Declare Instance CM : coreMem pointer mem.
+Declare Instance CM : coreMem ptr mem.
 Declare Instance M : memory CM.
 
 (*Parameter readV : forall m p s v,

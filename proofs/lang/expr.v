@@ -1125,7 +1125,7 @@ Record sprog_extra := {
 }.
 
 Instance progStack : progT [eqType of stk_fun_extra] := 
-  {| extra_val_t := pointer;
+  {| extra_val_t := ptr;
      extra_prog_t := sprog_extra  |}.
 
 Definition sfundef     := @fundef  _ progStack.

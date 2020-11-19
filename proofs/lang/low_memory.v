@@ -89,7 +89,7 @@ Proof.
 Qed.
 
 (* -------------------------------------------------------------- *)
-Lemma wunsigned_sub_small (p: pointer) (n: Z) :
+Lemma wunsigned_sub_small (p: ptr) (n: Z) :
   (0 <= n < wbase Uptr →
   wunsigned (p - wrepr Uptr n ) <= wunsigned p →
   n <= wunsigned p)%Z.

@@ -87,14 +87,14 @@ Lemma subxx p :
   sub p p = 0.
 Proof. by rewrite -{1}(add_0 p) sub_add. Qed.
 
-Lemma add_p_opp_sub_add_p (p q: pointer) (n: Z) :
+Lemma add_p_opp_sub_add_p (p q: ptr) (n: Z) :
   add p (- sub (add p n) q + n) = q.
 Proof.
   rewrite !addE !subE !(wrepr_add, wrepr_opp, wrepr_unsigned).
   ssrring.ssring.
 Qed.
 
-Corollary add_p_opp_sub_p (p q: pointer):
+Corollary add_p_opp_sub_p (p q: ptr):
   add p (- sub p q) = q.
 Proof.
   have := add_p_opp_sub_add_p p q 0.
@@ -137,26 +137,26 @@ Module MemoryI : MemoryT.
   Definition valid_frame (f: frame) : bool :=
     (0 <=? frame_size f) && (0 <=? frame_padding f).
 
-  Definition valid_frames (stk_limit stk_root: pointer) (frames: seq frame) :=
+  Definition valid_frames (stk_limit stk_root: ptr) (frames: seq frame) :=
     all valid_frame frames && (footprint_of_stack frames <=? wunsigned stk_root - wunsigned stk_limit).
 
-  (* The address [ptr] belongs to one stack frame *)
-  Fixpoint pointer_into_stack (ptr: Z) (stk_root: pointer) (frames: seq frame) : bool :=
+  (* The address [p] belongs to one stack frame *)
+  Fixpoint pointer_into_stack (p: Z) (stk_root: ptr) (frames: seq frame) : bool :=
     if frames is f :: frames'
     then
       let: base := wunsigned stk_root - footprint_of_stack frames in
       (* pointer to this frame *)
-      ((base <=? ptr) && (ptr <? base + frame_size f))
+      ((base <=? p) && (p <? base + frame_size f))
       ||
       (* pointer to an other frame *)
-      pointer_into_stack ptr stk_root frames'
+      pointer_into_stack p stk_root frames'
     else false (* no stack *).
 
   Record mem_ := {
     data      : Mz.t u8;
     alloc     : Mz.t unit;
-    stk_root  : pointer; (* root of the stack *)
-    stk_limit : pointer; (* limit of the stack *)
+    stk_root  : ptr; (* root of the stack *)
+    stk_limit : ptr; (* limit of the stack *)
     frames    : seq frame; (* shape of the frames on the stack *)
     framesP   : valid_frames stk_limit stk_root frames;
     stk_allocP x : pointer_into_stack x stk_root frames → is_zalloc alloc x;
@@ -168,10 +168,10 @@ Module MemoryI : MemoryT.
 
   Definition mem := mem_.
 
-  Definition is_alloc (m:mem) (p:pointer) :=
+  Definition is_alloc (m:mem) (p:ptr) :=
     is_zalloc m.(alloc) (wunsigned p).
 
-  Definition is_init (m:mem) (p:pointer) :=
+  Definition is_init (m:mem) (p:ptr) :=
     is_zalloc m.(data) (wunsigned p).
 
 (*  Lemma is_allocP m p ws :
@@ -201,15 +201,15 @@ Module MemoryI : MemoryT.
   Qed.
 *)
 (*
-  Definition valid_pointer (m:mem) (p:pointer) (ws: wsize) :=
+  Definition valid_pointer (m:mem) (p:ptr) (ws: wsize) :=
     is_align p ws && is_alloc m p ws.
 *)
 
-  Definition get (m:mem) (p:pointer) := 
+  Definition get (m:mem) (p:ptr) := 
     Let _ := assert (is_alloc m p && is_init m p) ErrAddrInvalid in
     ok (odflt 0%R (Mz.get m.(data) (wunsigned p))).
 
-  Definition set (m:mem) (p:pointer) (w:u8) :=
+  Definition set (m:mem) (p:ptr) (w:u8) :=
     Let _ := assert (is_alloc m p) ErrAddrInvalid in
     ok {| data      := Mz.set m.(data) (wunsigned p) w ;
           alloc     := m.(alloc);
@@ -245,7 +245,7 @@ Module MemoryI : MemoryT.
   Lemma get_valid8 m p w : get m p = ok w -> is_alloc m p.
   Proof. by rewrite /get; t_xrbindP => _ /assertP /andP []. Qed.
 
-  Instance CM : coreMem pointer mem :=
+  Instance CM : coreMem ptr mem :=
     CoreMem setP is_allocP get_valid8 is_alloc_set.
 
   Lemma is_align_wunsigned_add ptr ws i :
@@ -337,10 +337,10 @@ Module MemoryI : MemoryT.
   Definition stack_blocks_rec stk_root (frames: seq frame) :=
     foldr (λ f '(p, blk), let: s := footprint_of_frame f in let: q := add p (- s) in (q, q :: blk)) (stk_root, [::]) frames.
 
-  Definition stack_blocks stk_root frames : seq pointer :=
+  Definition stack_blocks stk_root frames : seq ptr :=
     (stack_blocks_rec stk_root frames).2.
 
-  Definition stack_frames (m: mem) : seq pointer :=
+  Definition stack_frames (m: mem) : seq ptr :=
     stack_blocks m.(stk_root) m.(frames).
 
   Lemma stack_blocks_rec_fst stk_root frames :
@@ -475,17 +475,17 @@ Module MemoryI : MemoryT.
   (** Initial memory: empty with pre-allocated blocks.
     The stack is rooted at the higest aligned pointer below the lowest allocated address.
    *)
-  Definition init_mem_alloc (s: seq (pointer * Z)) : Mz.t unit :=
+  Definition init_mem_alloc (s: seq (ptr * Z)) : Mz.t unit :=
     foldl (fun a pz => set_alloc true a (wunsigned pz.1) pz.2) (Mz.empty _) s.
 
-  Definition all_above (s: seq (pointer * Z)) (stk: pointer) : bool :=
+  Definition all_above (s: seq (ptr * Z)) (stk: ptr) : bool :=
     all (λ '(p, _), wlt Unsigned stk p) s.
 
   Lemma init_mem_framesP stk_root :
     valid_frames 0 stk_root [::].
   Proof. apply/lezP; rewrite Z.sub_0_r; exact: (proj1 (wunsigned_range _)). Qed.
 
-  Lemma init_mem_stk_allocP (stk_root: pointer) s x :
+  Lemma init_mem_stk_allocP (stk_root: ptr) s x :
     false →
     is_zalloc (init_mem_alloc s) x.
   Proof. by []. Qed.
@@ -514,7 +514,7 @@ Module MemoryI : MemoryT.
   Qed.
   Arguments init_mem_stk_freeP : clear implicits.
 
-  Definition init_mem (s: seq (pointer * Z)) (stk: pointer) : exec mem :=
+  Definition init_mem (s: seq (ptr * Z)) (stk: ptr) : exec mem :=
     match Sumbool.sumbool_of_bool (is_align stk U256) with
     | right _ => Error ErrStack
     | left stk_align =>
@@ -542,7 +542,7 @@ Module MemoryI : MemoryT.
     by move => ->; rewrite add_0.
   Qed.
 
-  Lemma stack_region_is_free (m: mem) (p: pointer) :
+  Lemma stack_region_is_free (m: mem) (p: ptr) :
     wunsigned (stk_limit m) <= wunsigned p < wunsigned (head (stk_root m) (stack_frames m)) →
     ~~ validw m p U8.
   Proof.
