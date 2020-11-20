@@ -629,7 +629,7 @@ Module MemoryI : MemoryT.
     rewrite -!valid8_validw /valid8 /= /is_alloc /top_stack /=.
     case/andP: h.
     set fr := {| frame_size := sz |} => ok_f /lezP no_ovf.
-    rewrite set_allocP /between.
+    rewrite set_allocP /between /zbetween.
     have b_pos := wunsigned_range m.(stk_root).
     have l_pos := wunsigned_range m.(stk_limit).
     have f_pos := footprint_of_stack_pos m.
