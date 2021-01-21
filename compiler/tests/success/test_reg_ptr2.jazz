@@ -1,0 +1,40 @@
+export fn foo (reg u64 x) -> reg u64 {
+  reg u64 r;
+  stack u64[4] s;
+  stack u64[8] s2;
+  reg ptr u64[4] rt;
+  reg ptr u64[8] rt2;
+  stack ptr u64[4] st;
+  stack ptr u64[8] st2;
+  inline int i;
+
+  for i = 0 to 8 {
+    x = x + i;
+    s2[i] = x;
+    if (i < 4) {
+      s[i] = 0;
+    }
+  }
+  rt2 = s2;
+
+  for i = 0 to 8 {
+    x = x + i;
+  }
+  st2 = rt2;
+  rt = st2[0:4];
+
+  r = 0;
+  for i = 0 to 4 {
+    r = r + rt[i];
+  }
+
+  //rt = st;
+
+  for i = 0 to 4 {
+    r = r + rt[i];
+  }
+
+  r = r + s[3];
+
+  return r;
+}
