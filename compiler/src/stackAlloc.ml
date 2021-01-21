@@ -258,6 +258,38 @@ let memory_analysis pp_comp_ferr ~debug tbl up =
                | None -> RAnone
                | Some ra -> RAreg (Conv.cvar_of_var tbl ra)
       } in
+    let false_vars = Hashtbl.create 97 in
+    let sao_alloc2 = 
+        let open Stack_alloc in
+         List.map (fun (x, pk) ->
+          let pk = match pk with
+         | PIstkptr (s, sub, f) ->
+             let v = { Var0.Var.vtype = Coq_sarr (Conv.pos_of_int 72); vname = s.vname } in
+             Hashtbl.add false_vars s v;
+             PIstkptr (v, { Stack_alloc.smp_ofs = Conv.z_of_bi (Bigint.add (Conv.bi_of_z sub.smp_ofs) (Bigint.of_int 64)); Stack_alloc.smp_len = sub.smp_len }, f)
+          | _ -> pk
+          in
+          (x, pk)) csao.sao_alloc
+    in
+    let io = ref 0 in
+    Hashtbl.iter (fun v v' ->
+      let res = Hashtbl.find tbl.var v in
+      Hashtbl.remove tbl.var v;
+      Hashtbl.add tbl.var v' res
+    ) false_vars;
+    let csao = Stack_alloc.{ csao with
+        sao_size = Conv.z_of_bi (Bigint.add (Conv.bi_of_z csao.sao_size) (Bigint.of_int 1024));
+        sao_slots = List.map (fun ((x, ws), ofs) -> 
+          let y =
+            match Hashtbl.find false_vars x with
+            | exception Not_found -> x
+            | z -> z
+          in
+          io := !io + 128;
+          ((y, ws), Conv.z_of_bi (Bigint.add (Conv.bi_of_z ofs) (Bigint.of_int !io)))
+          ) csao.sao_slots;
+        sao_alloc = sao_alloc2 }
+    in
     Hf.replace atbl fn csao in
   List.iter fix_csao (List.rev fds);
   
