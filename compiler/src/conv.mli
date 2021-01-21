@@ -1,8 +1,19 @@
 (* -------------------------------------------------------------------- *)
 open Wsize
 open Prog
+open Var0
 
-type 'info coq_tbl
+type 'info coq_tbl = {
+     dft_info      : 'info;
+     mutable count : int;
+     var           : (Var.var, var) Hashtbl.t;
+     cvar          : Var.var Hv.t;
+     vari          : (int, L.t) Hashtbl.t;
+     iinfo         : (int, (L.t * L.t list) * 'info) Hashtbl.t;
+     funname       : (funname, BinNums.positive) Hashtbl.t;
+     cfunname      : (BinNums.positive, funname) Hashtbl.t;
+     finfo         : (int, L.t * f_annot * call_conv) Hashtbl.t;
+  }
 
 val string0_of_string : string -> 'a (* coq string *)
 val string_of_string0 : 'a (* coq string *) -> string
