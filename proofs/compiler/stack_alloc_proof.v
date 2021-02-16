@@ -1185,7 +1185,7 @@ Section EXPR.
     is_align (sub_region_addr sr + wrepr _ (i * mk_scale aa ws)) ws ->
     read_mem (emem s') (sub_region_addr sr + wrepr _ (i * mk_scale aa ws)) ws = ok w.
   Proof.
-    move=> hwf heq hmem hofs.
+    move=> hwf heqval hmem hofs.
     rewrite /get_val; t_xrbindP=> a ha hget hal.
     rewrite Memory.readP /CoreMem.read.
     have /= := WArray.get_bound hget.
@@ -1200,7 +1200,7 @@ Section EXPR.
     rewrite (WArray.get_uget hget8).
     have: get_val_byte v (i * mk_scale aa ws + k) = ok v'.
     + by rewrite /get_val_byte /get_val ha.
-    move /heq; rewrite Memory.readP /CoreMem.read.
+    move /heqval; rewrite Memory.readP /CoreMem.read.
     have h: ByteSet.memi bytes (sr.(sr_zone).(z_ofs) + (i * mk_scale aa ws + k)).
     + rewrite memi_mem_U8; apply: subset_mem hmem; rewrite subset_interval_of_zone.
       rewrite -(sub_zone_at_ofs_compose _ _ _ (wsize_size ws)).
@@ -1379,11 +1379,11 @@ Proof. by rewrite /check_diff; case:ifPn => /Sv_memP. Qed.
       rewrite -haddr2.
       rewrite -sub_region_addr_offset in halign.
       assert (heq := wfr_val hgvalid hget); rewrite hty in heq.
-      case: heq => hread hval.
+      case: heq => hread hty'.
       assert (hwf := check_gvalid_wf wfr_wf hgvalid).
-      rewrite hty -hval in hwf.
+      rewrite hty -hty' in hwf.
       have [ws' [w [_ ?]]] := get_gvar_word hty hget; subst v.
-      case: hval => ?; subst ws'.
+      case: hty' => ?; subst ws'.
       have h3: Some 0 ≠ None → Some 0 = Some (0 * mk_scale AAdirect ws) by done.
       by rewrite (get_val_read_mem hwf hread hmem h3 (get_val_word _ w) halign).
     + move=> aa sz x e1 he1 e' v he'; apply: on_arr_gvarP => n t hty /= hget.
@@ -2380,8 +2380,7 @@ Proof.
     have := get_var_kindP hvs hx hnnew; rewrite /get_gvar /= => /(_ _ hgx) -> /=.
     rewrite he1' hxp /= hv1 /= hvw /=.
     have hvp1 := write_mem_valid_pointer hw.
-    have hvp2: valid_pointer (emem s2) (xp + w1) ws.
-    + by apply /Memory.readV; assert (h := vs_eq_mem hvp1); rewrite -h; apply /Memory.readV.
+    have /vs_valid_incl hvp2 := hvp1.
     have /Memory.writeV -/(_ w) [mem2' hmem2] := hvp2.
     rewrite hmem2 /=; eexists;split;first reflexivity.
     (* valid_state update mem *)
