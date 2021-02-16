@@ -834,6 +834,19 @@ Section EXPR.
     by case heq: Mvar.get => // -[<-]; apply hwfr.
   Qed.
 
+  Lemma get_gsub_regionP x vpk sr bytes sr' :
+    get_var_kind pmap x = ok (Some vpk) ->
+    check_gvalid rmap x = Some (sr, bytes) ->
+    get_gsub_region rmap (gv x) vpk = ok sr' ->
+    sr' = sr.
+  Proof.
+    rewrite /get_var_kind /check_gvalid.
+    case: (@idP (is_glob x)) => hg.
+    + by t_xrbindP=> -[_ ws] /get_globalP -> <- /= [<- _] [<-].
+    case: get_local => [pk|//] [<-] /=.
+    by move=> h1 h2; move: h2 h1 => /get_sub_regionP -> [].
+  Qed.
+
   Lemma check_vpk_wordP x vpk ofs ws t :
     (forall zofs, ofs = Some zofs -> 0 <= zofs /\ zofs + wsize_size ws <= size_slot x.(gv)) ->
     get_var_kind pmap x = ok (Some vpk) ->
@@ -842,15 +855,14 @@ Section EXPR.
       [/\ check_gvalid rmap x = Some (sr, bytes),
       let isub_ofs := interval_of_zone (sub_zone_at_ofs sr.(sr_zone) ofs (wsize_size ws)) in
       ByteSet.mem bytes isub_ofs &
-      is_align (sub_region_addr (sub_region_at_ofs sr ofs (wsize_size ws))) ws].
+      is_align (sub_region_addr sr) ws].
   Proof.
     move=> hofs hget.
     rewrite /check_vpk_word.
     t_xrbindP => sr' /(check_vpkP hofs hget) [sr [bytes [hgvalid -> hmem]]].
     assert (hwf := check_gvalid_wf wfr_wf hgvalid).
     change (wsize_size ws) with (size_of (sword ws)) in hofs.
-    have hwf' := sub_region_at_ofs_wf hwf hofs.
-    move=> /(check_alignP hwf') hal.
+    move=> _ /(get_gsub_regionP hget hgvalid) -> /(check_alignP hwf) hal.
     by exists sr, bytes.
   Qed.
 
@@ -1377,7 +1389,6 @@ Proof. by rewrite /check_diff; case:ifPn => /Sv_memP. Qed.
         by rewrite hgvk => -[_ [[]] <-].
       have [wx [wi [-> -> /= haddr2]]] := check_mk_addr h0 (get_var_kind_wf hgvk) h2 haddr.
       rewrite -haddr2.
-      rewrite -sub_region_addr_offset in halign.
       assert (heq := wfr_val hgvalid hget); rewrite hty in heq.
       case: heq => hread hty'.
       assert (hwf := check_gvalid_wf wfr_wf hgvalid).
@@ -1385,7 +1396,8 @@ Proof. by rewrite /check_diff; case:ifPn => /Sv_memP. Qed.
       have [ws' [w [_ ?]]] := get_gvar_word hty hget; subst v.
       case: hty' => ?; subst ws'.
       have h3: Some 0 ≠ None → Some 0 = Some (0 * mk_scale AAdirect ws) by done.
-      by rewrite (get_val_read_mem hwf hread hmem h3 (get_val_word _ w) halign).
+      rewrite (get_val_read_mem hwf hread hmem h3 (get_val_word _ w)) //.
+      by rewrite wrepr0 GRing.addr0.
     + move=> aa sz x e1 he1 e' v he'; apply: on_arr_gvarP => n t hty /= hget.
       t_xrbindP => i vi /he1{he1}he1 hvi w hw <-.
       move: he'; t_xrbindP => e1' /he1{he1}he1'.
@@ -1408,12 +1420,7 @@ Proof. by rewrite /check_diff; case:ifPn => /Sv_memP. Qed.
       have [wx [wi [-> -> /= haddr2]]] := check_mk_addr h0 (get_var_kind_wf hgvk) h5 haddr.
       rewrite -haddr2.
       have h6: is_align (sub_region_addr sr + wrepr _ (i * mk_scale aa sz)) sz.
-      + case: mk_ofsi (mk_ofsiP h0 (aa:=aa) (sz:=sz)) halign.
-        + move=> _ /(_ ltac:(discriminate)) [->].
-          by rewrite -sub_region_addr_offset.
-        move=> _.
-        rewrite sub_region_at_ofs_None => halign2.
-        apply is_align_add => //.
+      + apply is_align_add => //.
         by apply arr_is_align.
       assert (heq := wfr_val hgvalid hget).
       case: heq => hread _.
