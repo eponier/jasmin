@@ -432,9 +432,9 @@ Definition merge_bytes_map (_r:region) (bm1 bm2: option bytes_map) :=
 
 Definition merge (rmap1 rmap2:region_map) := 
   {| var_region := 
-       Mvar.map2 (fun _ or1 or2 =>
-        match or1, or2 with
-        | Some r1, Some r2 => if r1 == r2 then or1 else None
+       Mvar.map2 (fun _ osr1 osr2 =>
+        match osr1, osr2 with
+        | Some sr1, Some sr2 => if sr1 == sr2 then osr1 else None
         | _, _ => None
         end) rmap1.(var_region) rmap2.(var_region);
      region_var := Mr.map2 merge_bytes_map rmap1.(region_var) rmap2.(region_var) |}.
@@ -844,6 +844,7 @@ Definition alloc_array_move rmap r e :=
     end
   end.
 
+(* This function is also defined in array_init.v *)
 Definition is_array_init e := 
   match e with
   | Parr_init _ => true
@@ -862,19 +863,18 @@ Definition alloc_array_move_init rmap r e :=
     Let sr := 
       match get_local (v_var x) with
       | None    => cerror "register array remains" 
-      | Some pk => 
+      | Some pk =>
         match pk with
-        | Pdirect x' _ ws z Slocal =>
-          let z := {| z_ofs := z.(z_ofs) + ofs; z_len := len |} in
-          ok (sub_region_stack x' ws z)
-        | Pdirect _ _ _ _ Sglobal =>
-          cerror "array init glob"
+        | Pdirect x' _ ws z sc =>
+          if sc is Slocal then
+            ok (sub_region_stack x' ws z)
+          else
+            cerror "array init glob"
         | _ => 
-          Let sr := get_sub_region rmap x in
-          let z := {| z_ofs := sr.(sr_zone).(z_ofs) + ofs; z_len := len |} in
-          ok {| sr_region := sr.(sr_region); sr_zone := z |}
+          get_sub_region rmap x
         end
       end in
+    let sr := sub_region_at_ofs sr (Some ofs) len in
     let rmap := Region.set_arr_init rmap x sr in
     ok (rmap, nop)
   else alloc_array_move rmap r e.
