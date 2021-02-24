@@ -665,7 +665,7 @@ Definition alloc_lval (rmap: region_map) (r:lval) (ty:stype) :=
     | None => Let _ := check_diff x in ok (rmap, r)
     | Some pk => 
       if is_word_type (vtype x) is Some ws then 
-        if ty == sword ws then 
+        if subtype (sword ws) ty then 
           Let pofs := mk_addr_ptr x AAdirect ws pk (Pconst 0) in
           Let sr   := sub_region_pk pk in
           let r := Lmem ws pofs.1 pofs.2 in
@@ -723,14 +723,12 @@ Definition is_nop is_spilling rmap (x:var) (sry:sub_region) : bool :=
 
 (* TODO: better error message *)
 Definition get_addr is_spilling rmap x dx sry mk y ofs := 
-  Let ir :=
-    if is_nop is_spilling rmap x sry then ok nop
+  let ir :=
+    if is_nop is_spilling rmap x sry then nop
     else
-      Let _ := assert (size_slot x <=? sry.(sr_zone).(z_len))%Z
-                      (Cerr_stk_alloc "the lvalue is too small") in
-      ok (mov_ofs dx mk y ofs) in
+      mov_ofs dx mk y ofs in
   let rmap := Region.set_move rmap x sry in
-  ok (rmap, ir).
+  (rmap, ir).
 
 Definition get_ofs_sub aa ws e1 := 
   match mk_ofsi aa ws e1 with
@@ -826,13 +824,11 @@ Definition alloc_array_move rmap r e :=
         let rmap := Region.set_move rmap x sry in
         ok (rmap, nop)
       | Pregptr p =>
-        get_addr None rmap x (Lvar (with_var x p)) sry mk ey ofs
+        ok (get_addr None rmap x (Lvar (with_var x p)) sry mk ey ofs)
       | Pstkptr slot ofsx ws z x' =>
-        Let rmapir :=
+        let (rmap, ir) :=
           get_addr (Some (slot, ws, z, x')) rmap x (Lmem Uptr (with_var x pmap.(vrsp)) (cast_const (ofsx + z.(z_ofs)))) sry mk ey ofs in
-        let: (rmap, ir) := rmapir in
-        let rmap := Region.set_stack_ptr rmap slot ws z x' in
-        ok (rmap, ir)
+        ok (Region.set_stack_ptr rmap slot ws z x', ir)
       end
     end
   | Some (ofs, len) =>

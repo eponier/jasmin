@@ -672,7 +672,7 @@ Module MemoryI : MemoryT.
     rewrite /= /is_init /top_stack /=.
     case/andP: h.
     set fr := {| frame_size := sz |} => ok_f /lezP no_ovf.
-    rewrite clear_dataP /between.
+    rewrite clear_dataP /between /zbetween.
     have b_pos := wunsigned_range m.(stk_root).
     have l_pos := wunsigned_range m.(stk_limit).
     have f_pos := footprint_of_stack_pos m.

@@ -164,20 +164,22 @@ Section CoreMem.
     by rewrite {1}/read; case: is_align => //=; f_equal; apply eq_mapM => k _; apply get_read8.
   Qed.
 
-  Lemma write_valid8 m m' p s (v :word s) p' :
+  Lemma write_valid8_eq m m' p s (v :word s) :
     write m p v = ok m' ->
+    forall p',
     valid8 m' p' = valid8 m p'.
   Proof.
-    rewrite /write; t_xrbindP => ? _; move: m.
+    rewrite /write; t_xrbindP => ? _ hfold p'; move: m hfold.
     apply ziota_ind => /= [ m [->]//| i l _ hrec m]; t_xrbindP => ? h /hrec ->.
     by apply (valid8_set _ h).
   Qed.
 
-  Lemma write_validw m m' p s (v :word s) p' s' :
+  Lemma write_validw_eq m m' p s (v :word s) :
     write m p v = ok m' ->
+    forall p' s',
     validw m' p' s' = validw m p' s'.
   Proof.
-    by move=> hw; rewrite /validw; f_equal; apply all_ziota => ? _; apply: write_valid8 hw.
+    by move=> hw p' s'; rewrite /validw; f_equal; apply all_ziota => ? _; apply (write_valid8_eq hw).
   Qed.
 
   Lemma write_read8 m m' p ws (v: word ws) :
@@ -422,11 +424,12 @@ Qed.
 Lemma mod_wsize_size z sz : z mod wbase Uptr mod wsize_size sz = z mod wsize_size sz.
 Proof. by rewrite -Znumtheory.Zmod_div_mod //; apply wsize_size_div_wbase. Qed.
 
-Lemma is_align_addE (p1 p2:ptr) sz : 
-  is_align p1 sz -> is_align (p1 + p2)%R sz = is_align p2 sz.
+Lemma is_align_addE (p1:ptr) sz :
+  is_align p1 sz ->
+  forall p2, is_align (p1 + p2)%R sz = is_align p2 sz.
 Proof.
   have hn := wsize_size_pos sz.
-  move => /is_align_mod h; rewrite -!is_align_modE.
+  move => /is_align_mod h p2; rewrite -!is_align_modE.
   by rewrite /wunsigned CoqWord.word.addwE -/(wbase Uptr) mod_wsize_size -Zplus_mod_idemp_l h.
 Qed.
 
