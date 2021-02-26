@@ -375,27 +375,31 @@ Definition set_arr_word (rmap:region_map) (x:var) ofs ws :=
 (* TODO: verify that the right len is [size_slot x], not sr.(sr_zone).(z_len) !!! *)
 Definition set_arr_call rmap x sr := set_sub_region rmap x sr (Some 0)%Z (size_slot x).
 
+Definition set_move_bytes rv x sr :=
+  let bm := get_bytes_map sr.(sr_region) rv in
+  let bytes := get_bytes x bm in
+  let bm := Mvar.set bm x (ByteSet.add (interval_of_zone sr.(sr_zone)) bytes) in
+  Mr.set rv sr.(sr_region) bm.
+
+Definition set_move_sub (rmap:region_map) x sr :=
+  let rv := set_move_bytes rmap x sr in
+  {| var_region := rmap.(var_region);
+     region_var := rv |}.
+
 Definition set_arr_sub (rmap:region_map) (x:var) ofs len sr_from :=
   Let sr := get_sub_region rmap x in
   let sr' := sub_region_at_ofs sr (Some ofs) len in
-  let bm := get_bytes_map sr.(sr_region) rmap in
-  let bytes := get_bytes x bm in
   Let _ := assert (sr' == sr_from)
                   (Cerr_stk_alloc "set array: source and destination are not equal") in
-  let bm := Mvar.set bm x (ByteSet.add (interval_of_zone sr'.(sr_zone)) bytes) in
-  ok {| var_region := rmap.(var_region); 
-        region_var := Mr.set rmap.(region_var) sr.(sr_region) bm |}.
+  ok (set_move_sub rmap x sr').
 
 (* identical to [set_sub_region], except clearing
    TODO: fusion with set_arr_sub ? not sure its worth
 *)
 Definition set_move (rmap:region_map) (x:var) sr :=
-  let z := sr.(sr_zone) in
-  let i := interval_of_zone z in
-  let bm := get_bytes_map sr.(sr_region) rmap in
-  let bm := Mvar.set bm x (ByteSet.full i) in
+  let rv := set_move_bytes rmap x sr in
   {| var_region := Mvar.set rmap.(var_region) x sr;
-     region_var := Mr.set rmap.(region_var) sr.(sr_region) bm |}.
+     region_var := rv |}.
 
 Definition set_arr_init rmap x sr := set_move rmap x sr.
 
@@ -569,6 +573,7 @@ Definition check_vpk rmap (x:var) vpk ofs len :=
 
 (* TODO: this function is a bit ad hoc.
    Can we refactor?
+   Idea: check_valid/check_vpk could return both the sr and the sub_region_at_ofs
 *)
 Definition get_gsub_region rmap x vpk :=
   match vpk with
@@ -847,6 +852,9 @@ Definition is_array_init e :=
   | _ => false
   end.
 
+(* We do not update the [var_region] part *)
+(* there seems to be an invariant: all Pdirect are in the rmap *)
+(* long-term TODO: we can avoid putting PDirect in the rmap (look in pmap instead) *)
 Definition alloc_array_move_init rmap r e :=
   if is_array_init e then
     Let xsub := get_Lvar_sub r in
@@ -871,7 +879,7 @@ Definition alloc_array_move_init rmap r e :=
         end
       end in
     let sr := sub_region_at_ofs sr (Some ofs) len in
-    let rmap := Region.set_arr_init rmap x sr in
+    let rmap := Region.set_move_sub rmap x sr in
     ok (rmap, nop)
   else alloc_array_move rmap r e.
 

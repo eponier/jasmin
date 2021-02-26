@@ -106,6 +106,12 @@ Module WArray.
   Lemma is_align_scale (p:pointer) ws : is_align (p * mk_scale AAscale ws)%Z ws.
   Proof. by rewrite /is_align /mk_scale /= Z_mod_mult. Qed.
 
+  Lemma arr_is_align i ws :
+    is_align (wrepr Uptr i) ws = is_align i ws.
+  Proof.
+    by rewrite /is_align p_to_zE memory_model.p_to_zE wunsigned_repr mod_wsize_size.
+  Qed.
+
   Section CM.
     Variable (s:positive).
 
@@ -326,7 +332,7 @@ Module WArray.
     get AAscale ws m' p2 = if p1 == p2 then ok v else get AAscale ws m p2.
   Proof. 
     rewrite /set /get; case:eqP => [<- | hne hw]; first by apply writeP_eq.
-    apply: (writeP_neq hw); move=> ??; rewrite !addE /mk_scale;nia. 
+    apply: (CoreMem.writeP_neq hw); move=> ??; rewrite !addE /mk_scale;nia. 
   Qed.
 
   Lemma setP_eq len (m m':array len) p1 ws (v: word ws) :

@@ -404,6 +404,17 @@ Proof. done. Qed.
 
 Global Opaque Pointer.
 
+Lemma disjoint_range_alt p1 ws1 p2 ws2 :
+  disjoint_range p1 ws1 p2 ws2 ->
+  CoreMem.disjoint_range p1 ws1 p2 ws2.
+Proof.
+  case; rewrite /no_overflow !zify => hover1 hover2 hdisj i1 i2 hi1 hi2.
+  rewrite !addE => /(f_equal wunsigned).
+  have h1 := wunsigned_range p1.
+  have h2 := wunsigned_range p2.
+  by rewrite !wunsigned_add; Psatz.lia.
+Qed.
+
 Lemma cut_wbase_Uptr sz :
   wbase Uptr = (wsize_size sz * CoqWord.word.modulus (nat63.+3 - (Nat.log2 (wsize_size_minus_1 sz))))%Z.
 Proof. by case: sz; vm_compute. Qed.

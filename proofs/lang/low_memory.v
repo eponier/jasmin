@@ -80,6 +80,17 @@ Proof.
   move => hw; apply /writeV; exists m'; exact hw.
 Qed.
 
+(* An alternate form of [CoreMem.writeP_neq] that should be easier to use. *)
+Lemma writeP_neq mem1 mem2 p ws (v : word ws) p2 ws2 :
+  write mem1 p v = ok mem2 ->
+  disjoint_range p ws p2 ws2 ->
+  read mem2 p2 ws2 = read mem1 p2 ws2.
+Proof.
+  move=> hmem2 hdisj.
+  apply (writeP_neq hmem2).
+  by apply disjoint_range_alt.
+Qed.
+
 Lemma alloc_stack_top_stack m ws sz sz' m' :
   alloc_stack m ws sz sz' = ok m' →
   top_stack m' = top_stack_after_alloc (top_stack m) ws (sz + sz').
