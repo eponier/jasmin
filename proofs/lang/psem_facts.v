@@ -55,7 +55,7 @@ Proof.
   by move => v vs s /=; t_xrbindP => ? /write_lval_stack_stable -> /ih.
 Qed.
 
-Context (p: sprog) (gd: pointer).
+Context (p: sprog) (gd: ptr).
 
 Let Pc (s1: estate) (c: cmd) (s2: estate) : Prop := emem s1 ≡ emem s2.
 Let Pi_r (s1: estate) (ir: instr_r) (s2: estate) : Prop := emem s1 ≡ emem s2.

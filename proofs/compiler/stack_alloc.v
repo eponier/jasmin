@@ -784,6 +784,7 @@ Definition mk_mov vpk :=
   | _ => MK_MOV
   end.
 
+(* TODO: the check [is_lvar] was removed, was it really on purpose? *)
 (* TODO : currently, we check that the source array is valid and set the target
    array as valid too. We could, instead, give the same validity to the target
    array as the source one.
@@ -1144,7 +1145,7 @@ Definition init_local_map vrip vrsp fn globals sao :=
     let sv := Sv.add vrip (Sv.add vrsp Sv.empty) in
     Let aux := foldM add_alloc (Mvar.empty _, Region.empty, sv) sao.(sao_alloc) in
     let '(locals, rmap, sv) := aux in
-    ok (stack, locals, rmap, sv)
+    ok (locals, rmap, sv)
   else cferror fn "stack size, please report".
 
 (** For each function, the oracle returns:
@@ -1211,7 +1212,7 @@ Definition alloc_fd_aux p_extra mglob (local_alloc: funname -> stk_alloc_oracle_
   let vrip := {| vtype := sword Uptr; vname := p_extra.(sp_rip) |} in
   let vrsp := var_of_register RSP in
   Let mstk := init_local_map vrip vrsp fn mglob sao in
-  let '(stack, locals, rmap, disj) := mstk in
+  let '(locals, rmap, disj) := mstk in
   (* adding params to the map *)
   Let rparams := 
     add_err_fun fn (init_params disj locals rmap sao.(sao_params) fd.(f_params)) in
@@ -1252,6 +1253,7 @@ Definition alloc_fd p_extra mglob (local_alloc: funname -> stk_alloc_oracle_t) (
       |} in
   ok (f.1, swith_extra fd f_extra). 
 
+(* TODO: use read and/or LE.wread8 ? *)
 Definition check_glob (m: Mvar.t (Z*wsize)) (data:seq u8) (gd:glob_decl) := 
   let x := gd.1 in
   match Mvar.get m x with

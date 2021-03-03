@@ -1001,7 +1001,7 @@ Section PROOF.
 
   (** Export functions allocate their own stack frames
   * whereas internal functions have their frame allocated by the caller *)
-  Definition is_sp_for_call (fn: funname) (m: mem) (ptr: pointer) : Prop :=
+  Definition is_sp_for_call (fn: funname) (m: mem) (p: ptr) : Prop :=
     exists2 fd,
     get_fundef (p_funcs p) fn = Some fd &
     let e := fd.(f_extra) in
