@@ -217,6 +217,8 @@ Record pos_map := {
   vnew    : Sv.t;
 }.
 
+(* TODO: Z.land or is_align ?
+   Could be just is_align (sub_region_addr sr) ws ? *)
 Definition check_align (sr:sub_region) ws :=
   Let _ := assert (ws <= sr.(sr_region).(r_align))%CMP
                   (Cerr_stk_alloc "unaligned offset") in
@@ -1022,6 +1024,8 @@ Definition alloc_lval_call (srs:seq (option (bool * sub_region) * pexpr)) rmap (
 Definition alloc_call_res rmap srs ret_pos rs := 
   fmapM2 bad_lval_number (alloc_lval_call srs) rmap rs ret_pos.
 
+(* TODO: check sth about sao.(sao_max_size) *)
+(* sao.(sao_size) + sao.(sao_extra_size) *)
 Definition alloc_call rmap ini rs fn es := 
   let sao := local_alloc fn in
   Let es  := alloc_call_args rmap sao.(sao_params) es in
@@ -1073,12 +1077,14 @@ End PROG.
 
 End Section.
 
-Definition init_stack_layout fn (ws_align: wsize) (l: seq (var * wsize * Z)) := 
+(* TODO: the check Mvar.get mglob is needed for the proof only. Can it be removed ? *)
+Definition init_stack_layout fn (mglob : Mvar.t (Z * wsize)) (ws_align: wsize) (l: seq (var * wsize * Z)) := 
   let add (xsr: var * wsize * Z) 
           (slp:  Mvar.t (Z * wsize) * Z) :=
     let '(stack, p) := slp in
     let '(x,ws,ofs) := xsr in
     if Mvar.get stack x is Some _ then cferror fn "duplicate stack region, please report"
+    else if Mvar.get mglob x is Some _ then cferror fn "a region is both glob and stack"
     else
       if (p <= ofs)%CMP then
         let len := size_slot x in
@@ -1093,7 +1099,7 @@ Definition init_stack_layout fn (ws_align: wsize) (l: seq (var * wsize * Z)) :=
 
 (* TODO: extract the inner function ? *)
 Definition init_local_map vrip vrsp fn globals sao := 
-  Let sp := init_stack_layout fn sao.(sao_align) sao.(sao_slots) in
+  Let sp := init_stack_layout fn globals sao.(sao_align) sao.(sao_slots) in
   let '(stack, size) := sp in
   if (size <= sao.(sao_size))%CMP then
     let add_alloc (xpk:var * ptr_kind_init) (lrx: Mvar.t ptr_kind * region_map * Sv.t) :=
@@ -1121,21 +1127,30 @@ Definition init_local_map vrip vrsp fn globals sao :=
               else cferror fn "invalid slot, please report"
             end
           | PIstkptr x' z xp =>
+            if ~~ is_sarr x.(vtype) then
+              cferror fn "a stk ptr variable should be an array, please report"
+            else
             match Mvar.get stack x' with
             | None => cferror fn "unknown stack region, please report"
             | Some (ofs', ws') =>
               if Sv.mem xp sv then cferror fn "invalid stk ptr (not uniq), please report"
+              else if xp == x then cferror fn "a pseudo-var is equal to a program var, please report"
+              else if Mvar.get locals xp is Some _ then cferror fn "a pseudo-var is equal to a program var, please report"
               else                
                 if [&& (Uptr <= ws')%CMP,
-                    (0%Z <= z.(z_ofs))%CMP & 
-                    (* TODO: 64 | z.(z_ofs) *)
-                    (* TODO: size_of (sword Uptr) <= z_len *)
+                    (0%Z <= z.(z_ofs))%CMP,
+                    (Z.land z.(z_ofs) (wsize_size U64 - 1) == 0)%Z,
+                    (wsize_size Uptr <= z.(z_len))%CMP &
                     ((z.(z_ofs) + z.(z_len))%Z <= size_slot x')%CMP] then
                   ok (Sv.add xp sv, Pstkptr x' ofs' ws' z xp, rmap)
               else cferror fn "invalid ptr kind, please report"
             end
           | PIregptr p => 
+            if ~~ is_sarr x.(vtype) then
+              cferror fn "a reg ptr variable should be an array, please report"
+            else
             if Sv.mem p sv then cferror fn "invalid reg pointer already exists, please report"
+            else if Mvar.get locals p is Some _ then cferror fn "a pointer is equal to a program var, please report"
             else if vtype p != sword Uptr then cferror fn "invalid pointer type, please report"
             else ok (Sv.add p sv, Pregptr p, rmap) 
           end in
@@ -1187,6 +1202,7 @@ Definition check_results pmap rmap params oi res :=
   mapM2 (Cerr_stk_alloc "invalid function info:please report")
         (check_result pmap rmap params) oi res.
 
+(* is duplicate region the best error msg ? *)
 Definition init_param accu pi (x:var_i) := 
   let: (disj, lmap, rmap) := accu in
   match pi with
@@ -1194,6 +1210,10 @@ Definition init_param accu pi (x:var_i) :=
   | Some pi => 
     Let _ := assert (vtype pi.(pp_ptr) == sword Uptr) (Cerr_stk_alloc "bad ptr type: please report") in
     Let _ := assert (~~Sv.mem pi.(pp_ptr) disj) (Cerr_stk_alloc "duplicate region: please report") in
+    Let _ := assert (is_sarr x.(vtype)) (Cerr_stk_alloc "bad reg ptr type, please report") in
+    Let _ := assert (~~ Sv.mem x disj) (Cerr_stk_alloc "invalid reg pointer already exists, please report") in
+    if Mvar.get lmap pi.(pp_ptr) is Some _ then Error (Cerr_stk_alloc "a pointer is equal to a program var, please report")
+    else
     let r :=
       {| r_slot := pi.(pp_ptr);
          r_align := pi.(pp_align); r_writable := pi.(pp_writable) |} in
@@ -1239,6 +1259,7 @@ Definition alloc_fd_aux p_extra mglob (local_alloc: funname -> stk_alloc_oracle_
     f_res := res;
     f_extra := f_extra fd |}.
 
+(* TODO: when calling function, check sth about sao_max_size *)
 Definition alloc_fd p_extra mglob (local_alloc: funname -> stk_alloc_oracle_t) (f: ufun_decl) :=
   let: sao := local_alloc f.1 in
   Let fd := alloc_fd_aux p_extra mglob local_alloc sao f in
@@ -1284,7 +1305,7 @@ Definition init_map (sz:Z) (l:list (var * wsize * Z)) : cexec (Mvar.t (Z*wsize))
   let add (vp:var * wsize * Z) (mp:Mvar.t (Z*wsize) * Z) :=
     let '(v, ws, p) := vp in
     if (mp.2 <=? p)%Z then
-      if is_align (wrepr _ p) ws then
+      if Z.land p (wsize_size ws - 1) == 0%Z then
         let s := size_slot v in
         cok (Mvar.set mp.1 v (p,ws), p + s)%Z
       else cerror "bad global alignment: please report"
