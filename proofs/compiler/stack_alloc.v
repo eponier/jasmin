@@ -1098,6 +1098,10 @@ Definition init_stack_layout fn (mglob : Mvar.t (Z * wsize)) (ws_align: wsize) (
   foldM add (Mvar.empty _, 0%Z) l.
 
 (* TODO: extract the inner function ? *)
+(* TODO: I test if sao_slots contain duplicates. Not sure if this is required
+   for correctness. Maybe the same pb with parameters, but how to get
+   Pregptr there ?
+*)
 Definition init_local_map vrip vrsp fn globals sao := 
   Let sp := init_stack_layout fn globals sao.(sao_align) sao.(sao_slots) in
   let '(stack, size) := sp in
@@ -1106,6 +1110,8 @@ Definition init_local_map vrip vrsp fn globals sao :=
       let '(locals, rmap, sv) := lrx in
       let '(x, pk) := xpk in
       if Sv.mem x sv then cferror fn "invalid reg pointer, please report"
+      else if Mvar.get locals x is Some _ then
+        cferror fn "the oracle returned two results for the same var, please report"
       else
         Let svrmap := 
           match pk with
