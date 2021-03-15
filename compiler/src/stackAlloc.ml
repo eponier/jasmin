@@ -2,6 +2,7 @@ open Utils
 open Prog
 open Regalloc
 
+(* several printing functions are already defined in src/varalloc.ml *)
 let pp_sao tbl fmt sao =
   let open Stack_alloc in
   let pp_sao_align fmt align =
@@ -48,7 +49,7 @@ let pp_sao tbl fmt sao =
       | PIstkptr (v, z, x) ->
           let v = Conv.var_of_cvar tbl v in
           let x = Conv.var_of_cvar tbl x in
-          Format.fprintf fmt "Stack ptr %a %a (pseudo-reg %a)" (Printer.pp_var ~debug:true) v pp_zone z (Printer.pp_var ~debug:true) x
+          Format.fprintf fmt "Stack ptr %a (of type %a) %a (pseudo-reg %a (of type %a))" (Printer.pp_var ~debug:true) v Printer.pp_ty v.v_ty pp_zone z (Printer.pp_var ~debug:true) x Printer.pp_ty x.v_ty
     in
     let (var, pki) = alloc in
     let var = Conv.var_of_cvar tbl var in
@@ -165,7 +166,23 @@ let memory_analysis pp_comp_ferr ~debug tbl up =
         sao_rsp     = SavedStackNone; 
         sao_return_address = RAnone;
         } in 
-    sao in
+
+    let find_and_replace (slot, var) (x, pki) =
+      match pki with
+      | Stack_alloc.PIregptr (_) -> (slot, if var = None then Some x else var)
+      | Stack_alloc.PIdirect (_, _, Slocal) -> ((if slot = None then Some pki else slot), var)
+      | _ -> (slot, var)
+    in
+    let (slot, var) = List.fold_left find_and_replace (None, None) sao.sao_alloc in
+    let (slot, var) =
+      match slot, var with | Some slot, Some var -> slot, var | _ -> assert false
+    in
+    let sao_alloc2 = (var, slot) :: sao.sao_alloc in
+    let sao2 = Stack_alloc.{ sao with
+      sao_alloc = sao_alloc2
+    }
+    in
+    sao2 in
   
   let atbl = Hf.create 117 in 
   let get_sao fn = 
@@ -285,41 +302,6 @@ let memory_analysis pp_comp_ferr ~debug tbl up =
                | None -> RAnone
                | Some ra -> RAreg (Conv.cvar_of_var tbl ra)
       } in
-    let old_var =
-      let exception Found of Var0.Var.var in
-      try
-        let open Stack_alloc in
-        List.iter (fun (_x, pk) -> match pk with PIstkptr (s, _, _) -> raise (Found s) | _ -> ()) csao.sao_alloc;
-        assert false
-      with
-      | Found s -> s
-    in
-    let false_var = { Var0.Var.vtype = Coq_sarr (Conv.pos_of_int 1024); vname = old_var.vname } in
-    let v = Hashtbl.find tbl.var old_var in
-    Hashtbl.add tbl.var false_var v;
-    let sao_slots2 = [((false_var, Wsize.U64), Conv.z_of_bi (Bigint.of_int 0))] in
-    let io = ref 0 in
-    let sao_alloc2 =
-        let open Stack_alloc in
-         List.map (fun (x, pk) ->
-          let pk = match pk with
-         | PIstack (_s, sub) ->
-            let sub2 = { smp_ofs = Conv.z_of_bi (Bigint.add (Conv.bi_of_z sub.smp_ofs) (Bigint.of_int !io)); smp_len = sub.smp_len } in
-            io := !io + 64;
-            PIstack (false_var, sub2)
-         | PIstkptr (_s, sub, f) ->
-            let sub2 = { smp_ofs = Conv.z_of_bi (Bigint.add (Conv.bi_of_z sub.smp_ofs) (Bigint.of_int !io)); smp_len = sub.smp_len } in
-            io := !io + 64;
-            PIstkptr (false_var, sub2, f)
-          | _ -> pk
-          in
-          (x, pk)) (List.rev csao.sao_alloc)
-    in
-    let csao = Stack_alloc.{ csao with
-        sao_size = Conv.z_of_bi (Bigint.of_int 1024);
-        sao_slots = sao_slots2;
-        sao_alloc = sao_alloc2 }
-    in
     Hf.replace atbl fn csao in
   List.iter fix_csao (List.rev fds);
   
