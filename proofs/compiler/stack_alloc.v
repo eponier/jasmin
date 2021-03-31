@@ -287,12 +287,12 @@ Definition check_valid (rmap:region_map) (x:var) ofs len :=
   (* we get the bytes associated to variable [x] *)
   Let sr := get_sub_region rmap x in
   let bytes := get_var_bytes rmap sr.(sr_region) x in
-  let sub_ofs  := sub_zone_at_ofs sr.(sr_zone) ofs len in
-  let isub_ofs := interval_of_zone sub_ofs in
+  let sr' := sub_region_at_ofs sr ofs len in
+  let isub_ofs := interval_of_zone sr'.(sr_zone) in
   (* we check if [isub_ofs] is a subset of one of the intervals of [bytes] *)
   Let _   := assert (ByteSet.mem bytes isub_ofs)
                     (Cerr_stk_alloc "check_valid: the region is partial") in
-  ok {| sr_region := sr.(sr_region); sr_zone := sub_ofs |}.
+  ok (sr, sr').
 
 Definition clear_bytes i bytes := ByteSet.remove bytes i.
 (* TODO: check optim
@@ -549,7 +549,7 @@ Definition check_vpk rmap (x:var) vpk ofs len :=
   match vpk with
   | VKglob (_, ws) =>
     let sr := sub_region_glob x ws in
-    ok (sub_region_at_ofs sr ofs len)
+    ok (sr, sub_region_at_ofs sr ofs len)
   | VKptr _pk => 
     check_valid rmap x ofs len
   end.
@@ -573,20 +573,9 @@ Definition check_vpk rmap (x:var) vpk ofs len :=
 (* Ça simplifierait l'énoncé et la preuve de check_vpkP. *)
 *)
 
-(* TODO: this function is a bit ad hoc.
-   Can we refactor?
-   Idea: check_valid/check_vpk could return both the sr and the sub_region_at_ofs
-*)
-Definition get_gsub_region rmap x vpk :=
-  match vpk with
-  | VKglob (_, ws) => ok (sub_region_glob x ws)
-  | VKptr _pk => get_sub_region rmap x
-  end.
-
 Definition check_vpk_word rmap x vpk ofs ws :=
-  Let _ := check_vpk rmap x vpk ofs (wsize_size ws) in
-  Let sr := get_gsub_region rmap x vpk in
-  check_align sr ws.
+  Let srs := check_vpk rmap x vpk ofs (wsize_size ws) in
+  check_align srs.1 ws.
 
 Fixpoint alloc_e (e:pexpr) := 
   match e with
@@ -749,7 +738,7 @@ Definition get_Lvar_sub lv :=
   | Lasub aa ws len x e1 =>
     Let ofs := get_ofs_sub aa ws e1 in
     ok (x, Some (ofs, arr_size ws len))
-  | _      => cerror "variable/subarray excepted : 1"
+  | _      => cerror "variable/subarray expected : 1"
   end.
 
 Definition get_Pvar_sub e := 
@@ -758,7 +747,7 @@ Definition get_Pvar_sub e :=
   | Psub aa ws len x e1 =>
     Let ofs := get_ofs_sub aa ws e1 in
     ok (x, Some (ofs, arr_size ws len))
-  | _      => cerror "variable/subarray excepted : 2" 
+  | _      => cerror "variable/subarray expected : 2" 
   end.
 
 Definition is_stack_ptr vpk :=
@@ -812,7 +801,8 @@ Definition alloc_array_move rmap r e :=
     match vk with
     | None => cerror "alloc_array_move"
     | Some vpk =>
-      Let sry := check_vpk rmap vy vpk (Some ofs) len in
+      Let srs := check_vpk rmap vy vpk (Some ofs) len in
+      let sry := srs.2 in
       Let eofs := mk_addr_pexpr rmap vy vpk in
       let mk := mk_mov vpk in
       ok (sry, mk, eofs.1, (eofs.2 + ofs)%Z)
@@ -930,20 +920,23 @@ Context (local_alloc: funname -> stk_alloc_oracle_t).
 Definition get_Pvar e := 
   match e with
   | Pvar x => ok x
-  | _      => cerror "get_Pvar: variable excepted" 
+  | _      => cerror "get_Pvar: variable expected" 
   end.
 
+(* TODO: srs.1 or srs.2 -> I think both are correct *)
 Definition alloc_call_arg rmap (sao_param: option param_info) (e:pexpr) := 
   Let x := get_Pvar e in
   Let _ := assert (~~is_glob x) 
                   (Cerr_stk_alloc "global variable in argument of a call") in
   let xv := gv x in
   match sao_param, get_local xv with
-  | None, None =>  
+  | None, None =>
+    Let _ := check_diff xv in
     ok (None, Pvar x)
   | None, Some _ => cerror "argument not a reg" 
   | Some pi, Some (Pregptr p) => 
-    Let sr := Region.check_valid rmap xv (Some 0%Z) (size_slot xv) in
+    Let srs := Region.check_valid rmap xv (Some 0%Z) (size_slot xv) in
+    let sr := srs.1 in
     Let _  := if pi.(pp_writable) then writable sr.(sr_region) else ok tt in
     Let _  := check_align sr pi.(pp_align) in
     ok (Some (pi.(pp_writable),sr), Pvar (mk_lvar (with_var xv p)))
@@ -1002,7 +995,7 @@ Definition get_regptr (x:var_i) :=
 Definition get_Lvar lv := 
   match lv with
   | Lvar x => ok x
-  | _      => cerror "get_Lvar variable excepted"
+  | _      => cerror "get_Lvar variable expected"
   end.
 
 Definition alloc_lval_call (srs:seq (option (bool * sub_region) * pexpr)) rmap (r: lval) (i:option nat) :=
@@ -1012,10 +1005,10 @@ Definition alloc_lval_call (srs:seq (option (bool * sub_region) * pexpr)) rmap (
     ok (rmap, r)
   | Some i => 
     match nth (None, Pconst 0) srs i with
-    | (Some (_,mp), _) =>
+    | (Some (_,sr), _) =>
       Let x := get_Lvar r in
       Let p := get_regptr x in
-      Let rmap := Region.set_arr_call rmap (v_var x) mp in
+      Let rmap := Region.set_arr_call rmap (v_var x) sr in
       ok (rmap, Lvar p)
     | (None, _) => cerror "alloc_r_call : please report"
     end
@@ -1025,15 +1018,20 @@ Definition alloc_call_res rmap srs ret_pos rs :=
   fmapM2 bad_lval_number (alloc_lval_call srs) rmap rs ret_pos.
 
 (* TODO: check sth about sao.(sao_max_size) *)
+(* cf. check in compiler/src/stackAlloc.ml wrt max_size *)
 (* sao.(sao_size) + sao.(sao_extra_size) *)
-Definition alloc_call rmap ini rs fn es := 
-  let sao := local_alloc fn in
-  Let es  := alloc_call_args rmap sao.(sao_params) es in
-  Let rs  := alloc_call_res  rmap es sao.(sao_return) rs in
+(* TODO: this fails on the first round of stack_alloc for several files! *)
+Definition alloc_call (sao_caller:stk_alloc_oracle_t) rmap ini rs fn es := 
+  let sao_callee := local_alloc fn in
+  Let es  := alloc_call_args rmap sao_callee.(sao_params) es in
+  Let rs  := alloc_call_res  rmap es sao_callee.(sao_return) rs in
+ (* Let _   := assert (sao_caller.(sao_size) + sao_caller.(sao_extra_size) + sao_callee.(sao_max_size) <=? sao_caller.(sao_max_size))%Z
+                    (Cerr_stk_alloc "error in max_size computation, please report")
+  in *)
   let es  := map snd es in
   ok (rs.1, Ccall ini rs.2 fn es).
 
-Fixpoint alloc_i (rmap:region_map) (i: instr) : result instr_error (region_map * instr) :=
+Fixpoint alloc_i sao (rmap:region_map) (i: instr) : result instr_error (region_map * instr) :=
   let (ii, ir) := i in
   Let ir :=
     match ir with
@@ -1051,23 +1049,23 @@ Fixpoint alloc_i (rmap:region_map) (i: instr) : result instr_error (region_map *
   
     | Cif e c1 c2 => 
       Let e := add_iinfo ii (alloc_e rmap e) in
-      Let c1 := fmapM alloc_i rmap c1 in
-      Let c2 := fmapM alloc_i rmap c2 in
+      Let c1 := fmapM (alloc_i sao) rmap c1 in
+      Let c2 := fmapM (alloc_i sao) rmap c2 in
       let rmap:= merge c1.1 c2.1 in
       ok (rmap, Cif e c1.2 c2.2)
   
     | Cwhile a c1 e c2 => 
       let check_c rmap := 
-        Let c1 := fmapM alloc_i rmap c1 in
+        Let c1 := fmapM (alloc_i sao) rmap c1 in
         let rmap1 := c1.1 in
         Let e := add_iinfo ii (alloc_e rmap1 e) in
-        Let c2 := fmapM alloc_i rmap1 c2 in
+        Let c2 := fmapM (alloc_i sao) rmap1 c2 in
         ok ((rmap1, c2.1), (e, (c1.2, c2.2))) in
       Let r := loop2 ii check_c Loop.nb rmap in
       ok (r.1, Cwhile a r.2.2.1 r.2.1 r.2.2.2)
 
     | Ccall ini rs fn es =>
-      add_iinfo ii (alloc_call rmap ini rs fn es) 
+      add_iinfo ii (alloc_call sao rmap ini rs fn es) 
 
     | Cfor _ _ _  => cierror ii (Cerr_stk_alloc "don't deal with for loop")
     end in
@@ -1188,12 +1186,14 @@ Definition init_local_map vrip vrsp fn globals sao :=
         5/ Reg allocation
 *)
 
+(* TODO: srs.1 or srs.2 -> I think both are correct *)
 Definition check_result pmap rmap params oi (x:var_i) := 
   match oi with
   | Some i =>
     match nth None params i with
     | Some r => 
-      Let sr := check_valid rmap x (Some 0%Z) (size_slot x) in
+      Let srs := check_valid rmap x (Some 0%Z) (size_slot x) in
+      let sr := srs.1 in
       Let _  := assert (r == sr.(sr_region)) (Cerr_stk_alloc "invalid reg ptr in result") in
       Let p  := get_regptr pmap x in
       ok p
@@ -1232,7 +1232,7 @@ Definition init_param accu pi (x:var_i) :=
 Definition init_params disj lmap rmap sao_params params :=
   fmapM2 (Cerr_stk_alloc "invalid function info:please report")
     init_param (disj, lmap, rmap) sao_params params.
-   
+
 Definition alloc_fd_aux p_extra mglob (local_alloc: funname -> stk_alloc_oracle_t) sao (f: _ufun_decl) : cfexec _ufundef :=
   let: (fn, fd) := f in
   let vrip := {| vtype := sword Uptr; vname := p_extra.(sp_rip) |} in
@@ -1252,7 +1252,7 @@ Definition alloc_fd_aux p_extra mglob (local_alloc: funname -> stk_alloc_oracle_
         locals  := lmap;
         vnew    := sv;
       |} in
-  Let rbody := add_finfo fn fn (fmapM (alloc_i pmap local_alloc) rmap fd.(f_body)) in
+  Let rbody := add_finfo fn fn (fmapM (alloc_i pmap local_alloc sao) rmap fd.(f_body)) in
   let: (rmap, body) := rbody in
   Let res := 
       add_err_fun fn (check_results pmap rmap paramsi sao.(sao_return) fd.(f_res)) in
@@ -1291,13 +1291,13 @@ Definition check_glob (m: Mvar.t (Z*wsize)) (data:seq u8) (gd:glob_decl) :=
     match gd.2 with
     | @Gword ws w =>
       let s := Z.to_nat (wsize_size ws) in 
-      (s <= size data) && 
+      (s <= size data) &&
       (LE.decode ws (take s data) == w)
     | @Garr p t =>
       let s := Z.to_nat p in
       (s <= size data) &&
       all (fun i => 
-             match WArray.get AAdirect U8 t (Z.of_nat i) with
+             match read t (Z.of_nat i) U8 with
              | Ok w => nth 0%R data i == w
              | _    => false
              end) (iota 0 s)
@@ -1308,16 +1308,16 @@ Definition check_globs (gd:glob_decls) (m:Mvar.t (Z*wsize)) (data:seq u8) :=
   all (check_glob m data) gd.
 
 Definition init_map (sz:Z) (l:list (var * wsize * Z)) : cexec (Mvar.t (Z*wsize)) :=
-  let add (vp:var * wsize * Z) (mp:Mvar.t (Z*wsize) * Z) :=
+  let add (vp:var * wsize * Z) (globals:Mvar.t (Z*wsize) * Z) :=
     let '(v, ws, p) := vp in
-    if (mp.2 <=? p)%Z then
+    if (globals.2 <=? p)%Z then
       if Z.land p (wsize_size ws - 1) == 0%Z then
         let s := size_slot v in
-        cok (Mvar.set mp.1 v (p,ws), p + s)%Z
+        cok (Mvar.set globals.1 v (p,ws), p + s)%Z
       else cerror "bad global alignment: please report"
     else cerror "global overlap: please report" in
-  Let mp := foldM add (Mvar.empty (Z*wsize), 0%Z) l in
-  if (mp.2 <=? sz)%Z then cok mp.1
+  Let globals := foldM add (Mvar.empty (Z*wsize), 0%Z) l in
+  if (globals.2 <=? sz)%Z then cok globals.1
   else cerror "global size:please report".
 
 Definition alloc_prog rip global_data global_alloc local_alloc (P:_uprog) : cfexec _sprog :=

@@ -128,7 +128,7 @@ Qed.
 
 (* -------------------------------------------------------------- *)
 Definition allocatable_stack (m : mem) (z : Z) :=
-  True. (* TODO *)
+  (z <= wunsigned (top_stack m) - wunsigned (stack_limit m))%Z.
 
 (*
   Record allocatable_spec : Prop := {
