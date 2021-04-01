@@ -4089,10 +4089,6 @@ map2
 
 
 Variables vrip' vrsp' : var.
-(* TODO: definie sptr outside [Section] so that we can remove this duplicate. *)
-Notation sptr := (sword Uptr) (only parsing).
-Hypothesis wt_vrip' : vrip'.(vtype) = sptr.
-Hypothesis wt_vrsp' : vrsp'.(vtype) = sptr.
 
 Variables rsp : u64.
 
@@ -4328,6 +4324,10 @@ Proof.
 Qed.
 
 Variables vrip0 vrsp0 : var.
+(* TODO: define sptr outside [Section] so that we can remove this duplicate. *)
+Notation sptr := (sword Uptr) (only parsing).
+Hypothesis wt_vrip0 : vrip0.(vtype) = sptr.
+Hypothesis wt_vrsp0 : vrsp0.(vtype) = sptr.
 Variable locals1 : Mvar.t ptr_kind.
 Variable rmap1 : region_map.
 Variable vnew1 : Sv.t.
@@ -4590,20 +4590,20 @@ Definition lmap locals' vnew' := {|
   vnew := vnew'
 |}.
 
-Lemma add_alloc_wf locals11 rmap11 vnew11 x pki locals21 rmap21 vnew21 s1 s2:
+Lemma add_alloc_wf locals1' rmap1' vnew1' x pki locals2' rmap2' vnew2' s1 s2:
   (forall y v, get_var s1.(evm) y = ok v -> y <> x) ->
-  wf_pmap (lmap locals11 vnew11) rsp rip Slots Addr Writable Align ->
-  wf_rmap (lmap locals11 vnew11) Slots Addr Writable Align P rmap11 s1 s2 ->
-  add_alloc fn stack mglob (x, pki) (locals11, rmap11, vnew11) = ok (locals21, rmap21, vnew21) ->
-  wf_pmap (lmap locals21 vnew21) rsp rip Slots Addr Writable Align /\
-  wf_rmap (lmap locals21 vnew21) Slots Addr Writable Align P rmap21 s1 s2.
+  wf_pmap (lmap locals1' vnew1') rsp rip Slots Addr Writable Align ->
+  wf_rmap (lmap locals1' vnew1') Slots Addr Writable Align P rmap1' s1 s2 ->
+  add_alloc fn stack mglob (x, pki) (locals1', rmap1', vnew1') = ok (locals2', rmap2', vnew2') ->
+  wf_pmap (lmap locals2' vnew2') rsp rip Slots Addr Writable Align /\
+  wf_rmap (lmap locals2' vnew2') Slots Addr Writable Align P rmap2' s1 s2.
 Proof.
   move=> hvm hpmap hrmap.
   case: (hpmap) => /= hrip hrsp hnew1 hnew2 hglobals hlocals hnew.
   case: (hrmap) => hwfsr hval hptr.
   case: Sv_memP => [//|hnnew].
   case hregx: Mvar.get => //.
-  t_xrbindP=> {rmap21} -[[sv pk] rmap21] hpki [<- <- <-].
+  t_xrbindP=> {rmap2'} -[[sv pk] rmap2'] hpki [<- <- <-].
   case: pki hpki.
   + move=> s z sc.
     case heq: Mvar.get => [[ofs ws]|//].
@@ -4614,17 +4614,22 @@ Proof.
       + move=> y pky.
         rewrite Mvar.setP.
         case: eqP.
-        + move=> <- [<-]. (*
-          have hsc: scope s = sc.
-          + case: sc heq => heq.
-            + by apply (stack_scope heq).
-            by apply (mglob_scope heq). *)
+        + move=> <- [<-].
+          case: sc heq => heq.
+          + have hin: Sv.In s Slots_locals.
+            + by apply in_Slots_slots; congruence.
+            split=> //=.
+            + by apply in_Slots; right; left.
+            + by rewrite /Writable (pick_slot_locals hin).
+            + by rewrite /Align (pick_slot_locals hin) /Align_locals /Align_slots heq.
+            by rewrite /Addr (pick_slot_locals hin) /Addr_locals /Offset_slots heq.
+          have hin: Sv.In s Slots_globals.
+          + by apply in_Slots_slots; congruence.
           split=> //=.
-          + apply in_Slots.
-            by case: (sc) heq; [right|left]; congruence.
-          + by rewrite /Writable hsc.
-          + by rewrite /Align hsc heq.
-          by rewrite /Addr hsc heq.
+          + by apply in_Slots; left.
+          + by rewrite /Writable (pick_slot_globals hin).
+          + by rewrite /Align (pick_slot_globals hin) /Align_globals /Align_slots heq.
+          by rewrite /Addr (pick_slot_globals hin) /Addr_globals /Offset_slots heq.
         move=> hneq /hlocals.
         case: pky => //=.
         + move=> p [] hty1 hty2 hrip' hrsp' hnew' hneq'.
@@ -4650,10 +4655,12 @@ Proof.
         rewrite Mvar.setP.
         case: eqP.
         + move=> <- [<-].
+          have hin: Sv.In s Slots_locals.
+          + by apply in_Slots_slots; congruence.
           split; split=> //=.
-          + by apply in_Slots; right; congruence.
-          + by rewrite /Writable (stack_scope heq).
-          by rewrite /Align (stack_scope heq) heq.
+          + by apply in_Slots; right; left.
+          + by rewrite /Writable (pick_slot_locals hin).
+          by rewrite /Align (pick_slot_locals hin) /Align_locals /Align_slots heq.
         by move=> _; apply hwfsr.
       + move=> y sry bytesy vy /check_gvalid_set_move [].
         + move=> [hg ? _ _]; subst x.
@@ -4751,12 +4758,14 @@ Proof.
       rewrite Mvar.setP.
       case: eqP.
       + move=> <- [<-].
+        have hin: Sv.In s Slots_locals.
+        + by apply in_Slots_slots; congruence.
         split=> //=.
-        + by apply in_Slots; right; congruence.
-        + by rewrite /Writable (stack_scope heq).
-        + by rewrite /Align (stack_scope heq) heq.
+        + by apply in_Slots; right; left.
+        + by rewrite /Writable (pick_slot_locals hin).
+        + by rewrite /Align (pick_slot_locals hin) /Align_locals /Align_slots heq.
         + by rewrite WArray.arr_is_align; apply /eqP.
-        + by rewrite /Addr (stack_scope heq) heq.
+        + by rewrite /Addr (pick_slot_locals hin) /Addr_locals /Offset_slots heq.
         + by apply SvD.F.add_1.
         move=> w sw ofsw wsw zw wf.
         rewrite /get_local /= Mvar.setP.
@@ -4795,46 +4804,47 @@ Proof.
   by case: eqP; first by congruence.
 Qed.
 
-Lemma mglob_wf g ofs ws :
+Lemma init_map_wf g ofs ws :
   Mvar.get mglob g = Some (ofs, ws) ->
   wf_global rip Slots Addr Writable Align g ofs ws.
 Proof.
   move=> hget.
+  have hin: Sv.In g Slots_globals.
+  + by apply in_Slots_slots; congruence.
   split=> /=.
-  + by apply in_Slots; left; congruence.
-  + by rewrite /Writable (mglob_scope hget).
-  + by rewrite /Align (mglob_scope hget) hget.
-  by rewrite /Addr (mglob_scope hget) hget.
+  + by apply in_Slots; left.
+  + by rewrite /Writable (pick_slot_globals hin).
+  + by rewrite /Align (pick_slot_globals hin) /Align_globals /Align_slots hget.
+  by rewrite /Addr (pick_slot_globals hin) /Addr_globals /Offset_slots hget.
 Qed.
 
-Lemma init_local_map_wf locals' rmap vnew' s1 s2 :
+Lemma init_local_map_wf s1 s2 :
 (*   (forall x v, get_gvar gd s1.(evm) x = ok v -> is_glob x) -> *)
-  init_local_map vrip' vrsp' fn mglob sao = ok (locals', rmap, vnew') ->
-  wf_pmap (lmap locals' vnew') rsp rip Slots Addr Writable Align /\
-  wf_rmap (lmap locals' vnew') Slots Addr Writable Align P rmap s1 s2.
+(*   init_local_map vrip' vrsp' fn mglob sao = ok (locals', rmap, vnew') -> *)
+  wf_pmap (lmap locals1 vnew1) rsp rip Slots Addr Writable Align /\
+  wf_rmap (lmap locals1 vnew1) Slots Addr Writable Align P rmap1 s1 s2.
 Proof.
 (*   move=> hgetg. *)
-  rewrite init_local_map_eq hlayout /=.
-  case: ifP => [h1|//].
-  t_xrbindP=> {locals' rmap vnew'} -[[locals' rmap] vnew'] hfold [<- <- <-].
+  move: hlocal_map; rewrite init_local_map_eq /=.
+  t_xrbindP=> -[[locals1' rmap1'] vnew1'] hfold [???]; subst locals1' rmap1' vnew1'.
   move: hfold.
-  have: wf_pmap (lmap (Mvar.empty ptr_kind, empty, Sv.add vrip' (Sv.add vrsp' Sv.empty)).1.1
-                      (Mvar.empty ptr_kind, empty, Sv.add vrip' (Sv.add vrsp' Sv.empty)).2) rsp rip
+  have: wf_pmap (lmap (Mvar.empty ptr_kind, empty, Sv.add vrip0 (Sv.add vrsp0 Sv.empty)).1.1
+                      (Mvar.empty ptr_kind, empty, Sv.add vrip0 (Sv.add vrsp0 Sv.empty)).2) rsp rip
                       Slots Addr Writable Align
-     /\ wf_rmap (lmap (Mvar.empty ptr_kind, empty, Sv.add vrip' (Sv.add vrsp' Sv.empty)).1.1
-                      (Mvar.empty ptr_kind, empty, Sv.add vrip' (Sv.add vrsp' Sv.empty)).2)
-                Slots Addr Writable Align P (Mvar.empty ptr_kind, empty, Sv.add vrip' (Sv.add vrsp' Sv.empty)).1.2 s1 s2.
+     /\ wf_rmap (lmap (Mvar.empty ptr_kind, empty, Sv.add vrip0 (Sv.add vrsp0 Sv.empty)).1.1
+                      (Mvar.empty ptr_kind, empty, Sv.add vrip0 (Sv.add vrsp0 Sv.empty)).2)
+                Slots Addr Writable Align P (Mvar.empty ptr_kind, empty, Sv.add vrip0 (Sv.add vrsp0 Sv.empty)).1.2 s1 s2.
   + split.
     + split=> //=.
       + by apply SvD.F.add_1.
       + by apply SvD.F.add_2; apply SvD.F.add_1.
-      by apply mglob_wf.
+      by apply init_map_wf.
     split=> //=.
     admit.
   elim: sao.(sao_alloc) (Mvar.empty _, _, _).
   + by move=> /= [[locals0 rmap0] vnew0] ? [<- <- <-].
   move=> [x pki] l ih [[locals0 rmap0] vnew0] /= hbase.
-  t_xrbindP=> -[[locals1 rmap1] vnew1] halloc.
+  t_xrbindP=> -[[locals1' rmap1'] vnew1'] halloc.
   apply ih.
   apply: (add_alloc_wf _ hbase.1 hbase.2 halloc).
   admit.
