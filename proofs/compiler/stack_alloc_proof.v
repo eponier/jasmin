@@ -3959,11 +3959,8 @@ Record wf_Slots (Slots : Sv.t) Addr (Writable:slot-> bool) Align := {
 Variable (P : uprog) (ev: extra_val_t (progT := progUnit)).
 Notation gd := (p_globs P).
 *)
-(*
-Variable rip : u64.
 
-Hypothesis rip_align : is_align rip U256. (* TODO: is it correct? *)
-  (* could be formulated [forall ws, is_align rip ws] *)
+(* Variable rip : u64.
 
 Variable mglob : Mvar.t (Z * wsize).
 Variable gsize : Z.
@@ -4098,7 +4095,6 @@ Hypothesis wt_vrip' : vrip'.(vtype) = sptr.
 Hypothesis wt_vrsp' : vrsp'.(vtype) = sptr.
 
 Variables rsp : u64.
-Hypothesis rsp_align : is_align rsp sao.(sao_align).
 
 
 Hypothesis disjoint_globals_locals :
@@ -4109,6 +4105,9 @@ Variables rip rsp : u64.
 Hypothesis no_overflow_glob_size : no_overflow rip glob_size.
 Hypothesis no_overflow_size : no_overflow rsp sao.(sao_size).
 Hypothesis disjoint_zrange_globals_locals : disjoint_zrange rip glob_size rsp sao.(sao_size).
+Hypothesis rip_align : is_align rip U256.
+  (* could be formulated [forall ws, is_align rip ws] (cf. extend_mem) *)
+Hypothesis rsp_align : is_align rsp sao.(sao_align).
 
 Definition Slots_slots (m : Mvar.t (Z * wsize)) :=
   SvP.MP.of_list (map fst (Mvar.elements m)).
@@ -4437,6 +4436,7 @@ Proof.
 Qed.
 
 (* TODO: clean *)
+(* maybe we should prove : _ -> get_pi pi.(pp_ptr) = Some pi *)
 Lemma init_params_params_uniq pi :
   List.In (Some pi) (sao.(sao_params)) -> get_pi pi.(pp_ptr) <> None.
 Proof.
@@ -4564,25 +4564,23 @@ Proof.
     move /in_Slots_slots : hin.
     case heq: Mvar.get => [[ofs ws]|//] _.
     rewrite /Addr_globals /Offset_slots /Align_globals /Align_slots heq.
-    
-    
-  case /in_Slots: hs.
-  + case heq: Mvar.get => [[ofs ws]|//] _.
-    rewrite /Addr /Align (mglob_scope heq) heq /wbase_ptr /=.
     apply is_align_add.
     + apply: is_align_m rip_align.
-      apply wsize_ge_U256.
+      by apply wsize_ge_U256.
     rewrite WArray.arr_is_align.
-    by apply /eqP; apply (mglob_align heq).
-  case heq: Mvar.get => [[ofs ws]|//] _.
-  rewrite /Addr /Align (stack_scope heq) heq /wbase_ptr /=.
-  have [_ h1] := init_stack_layoutP hlayout.
-  have /h1 [h2 h3 _ _ _] := heq.
-  apply is_align_add.
-  + by apply (is_align_m h2).
-  rewrite WArray.arr_is_align.
-  by apply /eqP; apply h3. *)
-Admitted.
+    by apply /eqP; apply (init_map_align heq).
+  + rewrite /Addr /Align !(pick_slot_locals hin).
+    move /in_Slots_slots : hin.
+    case heq: Mvar.get => [[ofs ws]|//] _.
+    rewrite /Addr_locals /Offset_slots /Align_locals /Align_slots heq.
+    apply is_align_add.
+    + apply: is_align_m rsp_align.
+      by apply (init_stack_layout_stack_align heq).
+    rewrite WArray.arr_is_align.
+    by apply /eqP; apply (init_stack_layout_align heq).
+  rewrite /Addr /Align !(pick_slot_params hin).
+  by apply wf_Slots_params.
+Qed.
 
 Definition lmap locals' vnew' := {|
   vrip := vrip0;
