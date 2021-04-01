@@ -1076,7 +1076,7 @@ End PROG.
 End Section.
 
 (* TODO: the check Mvar.get mglob is needed for the proof only. Can it be removed ? *)
-Definition init_stack_layout fn (mglob : Mvar.t (Z * wsize)) (ws_align: wsize) (l: seq (var * wsize * Z)) := 
+Definition init_stack_layout fn (mglob : Mvar.t (Z * wsize)) sao := 
   let add (xsr: var * wsize * Z) 
           (slp:  Mvar.t (Z * wsize) * Z) :=
     let '(stack, p) := slp in
@@ -1086,86 +1086,85 @@ Definition init_stack_layout fn (mglob : Mvar.t (Z * wsize)) (ws_align: wsize) (
     else
       if (p <= ofs)%CMP then
         let len := size_slot x in
-        if (ws <= ws_align)%CMP then
+        if (ws <= sao.(sao_align))%CMP then
           if (Z.land ofs (wsize_size ws - 1) == 0)%Z then
             let stack := Mvar.set stack x (ofs, ws) in
             ok (stack, (ofs + len)%Z)
           else cferror fn "bad stack region alignment"
         else cferror fn "bad stack alignment" 
       else cferror fn "stack region overlap" in
-  foldM add (Mvar.empty _, 0%Z) l.
+  Let sp := foldM add (Mvar.empty _, 0%Z) sao.(sao_slots) in
+  let '(stack, size) := sp in
+  if (size <= sao.(sao_size))%CMP then ok stack
+  else cferror fn "stack size, please report".
 
 (* TODO: extract the inner function ? *)
 (* TODO: I test if sao_slots contain duplicates. Not sure if this is required
    for correctness. Maybe the same pb with parameters, but how to get
    Pregptr there ?
 *)
-Definition init_local_map vrip vrsp fn globals sao := 
-  Let sp := init_stack_layout fn globals sao.(sao_align) sao.(sao_slots) in
-  let '(stack, size) := sp in
-  if (size <= sao.(sao_size))%CMP then
-    let add_alloc (xpk:var * ptr_kind_init) (lrx: Mvar.t ptr_kind * region_map * Sv.t) :=
-      let '(locals, rmap, sv) := lrx in
-      let '(x, pk) := xpk in
-      if Sv.mem x sv then cferror fn "invalid reg pointer, please report"
-      else if Mvar.get locals x is Some _ then
-        cferror fn "the oracle returned two results for the same var, please report"
-      else
-        Let svrmap := 
-          match pk with
-          | PIdirect x' z sc =>
-            let vars := if sc is Slocal then stack else globals in
-            match Mvar.get vars x' with
-            | None => cferror fn "unknown region, please report"
-            | Some (ofs', ws') =>
-              if [&& (size_slot x <= z.(z_len))%CMP, (0%Z <= z.(z_ofs))%CMP &
-                     ((z.(z_ofs) + z.(z_len))%Z <= size_slot x')%CMP] then
-                let rmap :=
-                  if sc is Slocal then
-                    let sr := sub_region_stack x' ws' z in
-                    Region.set_arr_init rmap x sr
-                  else
-                    rmap
-                in
-                ok (sv, Pdirect x' ofs' ws' z sc, rmap)
-              else cferror fn "invalid slot, please report"
-            end
-          | PIstkptr x' z xp =>
-            if ~~ is_sarr x.(vtype) then
-              cferror fn "a stk ptr variable should be an array, please report"
-            else
-            match Mvar.get stack x' with
-            | None => cferror fn "unknown stack region, please report"
-            | Some (ofs', ws') =>
-              if Sv.mem xp sv then cferror fn "invalid stk ptr (not uniq), please report"
-              else if xp == x then cferror fn "a pseudo-var is equal to a program var, please report"
-              else if Mvar.get locals xp is Some _ then cferror fn "a pseudo-var is equal to a program var, please report"
-              else                
-                if [&& (Uptr <= ws')%CMP,
-                    (0%Z <= z.(z_ofs))%CMP,
-                    (Z.land z.(z_ofs) (wsize_size U64 - 1) == 0)%Z,
-                    (wsize_size Uptr <= z.(z_len))%CMP &
-                    ((z.(z_ofs) + z.(z_len))%Z <= size_slot x')%CMP] then
-                  ok (Sv.add xp sv, Pstkptr x' ofs' ws' z xp, rmap)
-              else cferror fn "invalid ptr kind, please report"
-            end
-          | PIregptr p => 
-            if ~~ is_sarr x.(vtype) then
-              cferror fn "a reg ptr variable should be an array, please report"
-            else
-            if Sv.mem p sv then cferror fn "invalid reg pointer already exists, please report"
-            else if Mvar.get locals p is Some _ then cferror fn "a pointer is equal to a program var, please report"
-            else if vtype p != sword Uptr then cferror fn "invalid pointer type, please report"
-            else ok (Sv.add p sv, Pregptr p, rmap) 
-          end in
-        let '(sv,pk, rmap) := svrmap in
-        let locals := Mvar.set locals x pk in
-        ok (locals, rmap, sv) in
-    let sv := Sv.add vrip (Sv.add vrsp Sv.empty) in
-    Let aux := foldM add_alloc (Mvar.empty _, Region.empty, sv) sao.(sao_alloc) in
-    let '(locals, rmap, sv) := aux in
-    ok (locals, rmap, sv)
-  else cferror fn "stack size, please report".
+Definition init_local_map vrip vrsp fn globals stack sao := 
+  let add_alloc (xpk:var * ptr_kind_init) (lrx: Mvar.t ptr_kind * region_map * Sv.t) :=
+    let '(locals, rmap, sv) := lrx in
+    let '(x, pk) := xpk in
+    if Sv.mem x sv then cferror fn "invalid reg pointer, please report"
+    else if Mvar.get locals x is Some _ then
+      cferror fn "the oracle returned two results for the same var, please report"
+    else
+      Let svrmap := 
+        match pk with
+        | PIdirect x' z sc =>
+          let vars := if sc is Slocal then stack else globals in
+          match Mvar.get vars x' with
+          | None => cferror fn "unknown region, please report"
+          | Some (ofs', ws') =>
+            if [&& (size_slot x <= z.(z_len))%CMP, (0%Z <= z.(z_ofs))%CMP &
+                   ((z.(z_ofs) + z.(z_len))%Z <= size_slot x')%CMP] then
+              let rmap :=
+                if sc is Slocal then
+                  let sr := sub_region_stack x' ws' z in
+                  Region.set_arr_init rmap x sr
+                else
+                  rmap
+              in
+              ok (sv, Pdirect x' ofs' ws' z sc, rmap)
+            else cferror fn "invalid slot, please report"
+          end
+        | PIstkptr x' z xp =>
+          if ~~ is_sarr x.(vtype) then
+            cferror fn "a stk ptr variable should be an array, please report"
+          else
+          match Mvar.get stack x' with
+          | None => cferror fn "unknown stack region, please report"
+          | Some (ofs', ws') =>
+            if Sv.mem xp sv then cferror fn "invalid stk ptr (not uniq), please report"
+            else if xp == x then cferror fn "a pseudo-var is equal to a program var, please report"
+            else if Mvar.get locals xp is Some _ then cferror fn "a pseudo-var is equal to a program var, please report"
+            else                
+              if [&& (Uptr <= ws')%CMP,
+                  (0%Z <= z.(z_ofs))%CMP,
+                  (Z.land z.(z_ofs) (wsize_size U64 - 1) == 0)%Z,
+                  (wsize_size Uptr <= z.(z_len))%CMP &
+                  ((z.(z_ofs) + z.(z_len))%Z <= size_slot x')%CMP] then
+                ok (Sv.add xp sv, Pstkptr x' ofs' ws' z xp, rmap)
+            else cferror fn "invalid ptr kind, please report"
+          end
+        | PIregptr p => 
+          if ~~ is_sarr x.(vtype) then
+            cferror fn "a reg ptr variable should be an array, please report"
+          else
+          if Sv.mem p sv then cferror fn "invalid reg pointer already exists, please report"
+          else if Mvar.get locals p is Some _ then cferror fn "a pointer is equal to a program var, please report"
+          else if vtype p != sword Uptr then cferror fn "invalid pointer type, please report"
+          else ok (Sv.add p sv, Pregptr p, rmap) 
+        end in
+      let '(sv,pk, rmap) := svrmap in
+      let locals := Mvar.set locals x pk in
+      ok (locals, rmap, sv) in
+  let sv := Sv.add vrip (Sv.add vrsp Sv.empty) in
+  Let aux := foldM add_alloc (Mvar.empty _, Region.empty, sv) sao.(sao_alloc) in
+  let '(locals, rmap, sv) := aux in
+  ok (locals, rmap, sv).
 
 (** For each function, the oracle returns:
   - the size of the stack block;
@@ -1209,7 +1208,7 @@ Definition check_results pmap rmap params oi res :=
         (check_result pmap rmap params) oi res.
 
 (* is duplicate region the best error msg ? *)
-Definition init_param accu pi (x:var_i) := 
+Definition init_param (mglob stack : Mvar.t (Z * wsize)) accu pi (x:var_i) := 
   let: (disj, lmap, rmap) := accu in
   match pi with
   | None => ok (accu, (None, x))
@@ -1218,30 +1217,33 @@ Definition init_param accu pi (x:var_i) :=
     Let _ := assert (~~Sv.mem pi.(pp_ptr) disj) (Cerr_stk_alloc "duplicate region: please report") in
     Let _ := assert (is_sarr x.(vtype)) (Cerr_stk_alloc "bad reg ptr type, please report") in
     Let _ := assert (~~ Sv.mem x disj) (Cerr_stk_alloc "invalid reg pointer already exists, please report") in
-    if Mvar.get lmap pi.(pp_ptr) is Some _ then Error (Cerr_stk_alloc "a pointer is equal to a program var, please report")
+    if Mvar.get lmap pi.(pp_ptr) is Some _ then Error (Cerr_stk_alloc "a pointer is equal to a local var, please report")
+    else if Mvar.get mglob pi.(pp_ptr) is Some _ then Error (Cerr_stk_alloc "a region is both glob and param, please report")
+    else if Mvar.get stack pi.(pp_ptr) is Some _ then Error (Cerr_stk_alloc "a region is both stack and param, please report")
     else
     let r :=
       {| r_slot := pi.(pp_ptr);
          r_align := pi.(pp_align); r_writable := pi.(pp_writable) |} in
-    ok (Sv.add pi.(pp_ptr) disj, 
+    ok (Sv.add pi.(pp_ptr) disj,
         Mvar.set lmap x (Pregptr pi.(pp_ptr)),
         Region.set_full rmap x r,
         (Some r, with_var x pi.(pp_ptr)))
   end.
 
-Definition init_params disj lmap rmap sao_params params :=
+Definition init_params mglob stack disj lmap rmap sao_params params :=
   fmapM2 (Cerr_stk_alloc "invalid function info:please report")
-    init_param (disj, lmap, rmap) sao_params params.
+    (init_param mglob stack) (disj, lmap, rmap) sao_params params.
 
 Definition alloc_fd_aux p_extra mglob (local_alloc: funname -> stk_alloc_oracle_t) sao (f: _ufun_decl) : cfexec _ufundef :=
   let: (fn, fd) := f in
   let vrip := {| vtype := sword Uptr; vname := p_extra.(sp_rip) |} in
   let vrsp := var_of_register RSP in
-  Let mstk := init_local_map vrip vrsp fn mglob sao in
+  Let stack := init_stack_layout fn mglob sao in
+  Let mstk := init_local_map vrip vrsp fn mglob stack sao in
   let '(locals, rmap, disj) := mstk in
   (* adding params to the map *)
   Let rparams := 
-    add_err_fun fn (init_params disj locals rmap sao.(sao_params) fd.(f_params)) in
+    add_err_fun fn (init_params mglob stack disj locals rmap sao.(sao_params) fd.(f_params)) in
   let: (sv, lmap, rmap, alloc_params) := rparams in
   let paramsi := map fst alloc_params in
   let params : seq var_i := map snd alloc_params in
