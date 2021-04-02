@@ -1218,11 +1218,12 @@ Definition init_param (mglob stack : Mvar.t (Z * wsize)) accu pi (x:var_i) :=
     Let _ := assert (is_sarr x.(vtype)) (Cerr_stk_alloc "bad reg ptr type, please report") in
     Let _ := assert (~~ Sv.mem x disj) (Cerr_stk_alloc "invalid reg pointer already exists, please report") in
     if Mvar.get lmap pi.(pp_ptr) is Some _ then Error (Cerr_stk_alloc "a pointer is equal to a local var, please report")
-    else if Mvar.get mglob pi.(pp_ptr) is Some _ then Error (Cerr_stk_alloc "a region is both glob and param, please report")
-    else if Mvar.get stack pi.(pp_ptr) is Some _ then Error (Cerr_stk_alloc "a region is both stack and param, please report")
+    else if Mvar.get mglob x is Some _ then Error (Cerr_stk_alloc "a region is both glob and param, please report")
+    else if Mvar.get stack x is Some _ then Error (Cerr_stk_alloc "a region is both stack and param, please report")
+    else if Mvar.get lmap x is Some _ then Error (Cerr_stk_alloc "a stack variable also occurs as a parameter, please report")
     else
     let r :=
-      {| r_slot := pi.(pp_ptr);
+      {| r_slot := x;
          r_align := pi.(pp_align); r_writable := pi.(pp_writable) |} in
     ok (Sv.add pi.(pp_ptr) disj,
         Mvar.set lmap x (Pregptr pi.(pp_ptr)),
