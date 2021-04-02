@@ -4405,83 +4405,77 @@ Lemma init_local_map_eq :
     ok (locals, rmap, sv).
 Proof. done. Qed.
 
-(* TODO: clean *)
-Lemma init_params_not_glob_stack s :
-  get_pi s <> None -> Mvar.get mglob s = None /\ Mvar.get stack s = None.
+Lemma init_params_not_glob_nor_stack pi :
+  List.In (Some pi) (sao.(sao_params)) ->
+  Mvar.get mglob pi.(pp_ptr) = None /\ Mvar.get stack pi.(pp_ptr) = None.
 Proof.
-  rewrite /get_pi.
   move: hparams; rewrite /init_params.
-  elim: sao.(sao_params) params vnew1 locals1 rmap1 vnew2 locals2 rmap2 alloc_params.
-  + rewrite /=. done.
-  move=> opi sao_params ih.
-  move=> params' vnew' locals' rmap' vnew2' locals2' rmap2' alloc_params' hfmap.
-  rewrite /=.
-  case: opi hfmap => [pi|] /=.
-  + move=> hfmap.
-    case: eqP.
-    + move=> -> _.
-      move: hfmap.
-      case: params' => //.
-      t_xrbindP=> ??? _ _ _ _ _ _ _ _.
-      case: Mvar.get => //.
-      case: Mvar.get => //.
-      case: Mvar.get => //.
-    move=> ?. move=> /ih{ih}ih.
-    move: hfmap.
-    case: params' => //.
-    t_xrbindP=> ?? [[[??]?]?] _ _ _ _ _ _ _ _ _.
-    move=> [[[??]?]?]. move=> /ih. done.
-  case: params' => //=.
-  t_xrbindP=> ?? [[[??]?]?] /ih{ih}ih _ _ /ih. done.
+  elim: sao.(sao_params) params vnew1 locals1 rmap1 vnew2 locals2 rmap2 alloc_params => //.
+  move=> opi2 sao_params ih [//|param params'].
+  move=> vnew0 locals0 rmap0 vnew2' locals2' rmap2' alloc_params' /=.
+  case: opi2 => [pi2|]; last first.
+  + by move=> /=; t_xrbindP=> -[[[??]?]?] /ih{ih}ih _ _ [//|] /ih.
+  t_xrbindP=> -[[[??]?]?] _ _ _ _ _ _ _ _.
+  case: Mvar.get => //.
+  case heq1: Mvar.get => //.
+  case heq2: Mvar.get => //.
+  move=> _ [[[_ _] _] _] /ih{ih}ih _ _.
+  case=> //.
+  by move=> [?]; subst pi2; split.
 Qed.
 
-(* TODO: clean *)
-(* maybe we should prove : _ -> get_pi pi.(pp_ptr) = Some pi *)
-Lemma init_params_params_uniq pi :
-  List.In (Some pi) (sao.(sao_params)) -> get_pi pi.(pp_ptr) <> None.
+Lemma init_params_get_pi pi :
+  List.In (Some pi) (sao.(sao_params)) -> get_pi pi.(pp_ptr) = Some pi.
 Proof.
- (* have: List.In (Some pi) sao.(sao_params) -> get_pi pi.(pp_ptr) <> None
-    /\ Sv.In pi.(pp_ptr) vnew2; last first.
-  + move=> h /h []. done. *)
+  have: List.In (Some pi) sao.(sao_params) ->
+    get_pi pi.(pp_ptr) = Some pi /\ ~ Sv.In pi.(pp_ptr) vnew1;
+  last first.
+  + by move=> h /h [].
   rewrite /get_pi.
   move: hparams; rewrite /init_params.
-  elim: sao.(sao_params) params vnew1 locals1 rmap1 vnew2 locals2 rmap2 alloc_params.
-  + rewrite /=. done.
-  move=> opi sao_params ih.
-  move=> params' vnew' locals' rmap' vnew2' locals2' rmap2' alloc_params' hfmap.
-  rewrite /=.
+  elim: sao.(sao_params) params vnew1 locals1 rmap1 vnew2 locals2 rmap2 alloc_params => //.
+  move=> opi2 sao_params ih [//|param params'].
+  move=> vnew0 locals0 rmap0 vnew2' locals2' rmap2' alloc_params' /=.
+  t_xrbindP=> -[[[vnew1' locals1'] rmap1'] alloc_param'].
+  case: opi2 => [pi2|]; last first.
+  + by move=> [<- _ _ _] [[[??]?]?] /ih{ih}ih _ _ [//|] /ih.
+  t_xrbindP=> _ _ _ /assertP /Sv_memP hnnew _ _ _ _.
+  case: Mvar.get=> //.
+  case: Mvar.get=> //.
+  case: Mvar.get=> //.
+  move=> [? _ _ _]; subst vnew1'.
+  move=> {vnew2' locals2' rmap2' alloc_params'}
+    [[[vnew2' locals2'] rmap2'] alloc_params2'] /ih{ih}ih _ _.
   case.
-  + move=> ?; subst opi. rewrite eq_refl. done.
-  move=> /ih{ih}ih.
-  move: hfmap => /=.
-    case: params' => //.
-    t_xrbindP=> ?? [[[??]?]?].
-    case: opi => [pi'|].
-    t_xrbindP=> _ _ _ _ _ _ _ _.
-    case: Mvar.get => //.
-        case: Mvar.get => //.
-            case: Mvar.get => //.
-    move=> [<- <- <- <-].
-    move=> [[[??]?]?] /ih{ih}ih.
-    move=> [???]; subst.
-    move=> _.
-    case: eqP => //.
-  move=> [<- <- <- <-].
-  move=> [[[??]?]?] /= /ih{ih}ih. done.
+  + by move=> [?]; subst pi2; rewrite eq_refl; split.
+  move=> /ih{ih}[ih1 ih2].
+  case: eqP => [heq|_].
+  + by case ih2; apply Sv.add_spec; left.
+  split=> //.
+  move=> hnew.
+  by case ih2; apply Sv.add_spec; right.
+Qed.
+
+Lemma get_piP s pi :
+  get_pi s = Some pi <-> List.In (Some pi) sao.(sao_params) /\ s = pi.(pp_ptr).
+Proof.
+  split; last first.
+  + by move=> [hin ->]; apply init_params_get_pi.
+  rewrite /get_pi.
+  case hfind: List.find => [[pi2|//]|//] [?]; subst pi2.
+  by have [? /eqP ?] := List.find_some _ _ hfind.
 Qed.
 
 Lemma disjoint_globals_params : disjoint Slots_globals Slots_params.
 Proof.
-  apply /disjointP => s /in_Slots_slots ? /in_Slots_params [pi [h1 h2]].
-  have /init_params_params_uniq := h1.
-  move=> /init_params_not_glob_stack []. congruence.
+  apply /disjointP => s /in_Slots_slots ? /in_Slots_params [pi []].
+  by move=> /init_params_not_glob_nor_stack []; congruence.
 Qed.
 
 Lemma disjoint_locals_params : disjoint Slots_locals Slots_params.
 Proof.
-  apply /disjointP => s /in_Slots_slots ? /in_Slots_params [pi [h1 h2]].
-  have /init_params_params_uniq := h1.
-  move=> /init_params_not_glob_stack []. congruence.
+  apply /disjointP => s /in_Slots_slots ? /in_Slots_params [pi []].
+  by move=> /init_params_not_glob_nor_stack []; congruence.
 Qed.
 
 Lemma pick_slot_params s :
@@ -4851,20 +4845,24 @@ Proof.
 Admitted.
 
 (* proofs are very similar to add_alloc, can we factorize ? *)
-Lemma init_paramP vnew1 locals1 rmap1 sao_param param vnew2 locals2 rmap2 aparam s1 s2 :
-  wf_pmap (lmap locals1 vnew1) rsp rip Slots Addr Writable Align ->
-  wf_rmap (lmap locals1 vnew1) Slots Addr Writable Align P rmap1 s1 s2 ->
-  init_param (vnew1, locals1, rmap1) sao_param param = ok (vnew2, locals2, rmap2, aparam) ->
-  wf_pmap (lmap locals2 vnew2) rsp rip Slots Addr Writable Align /\
-  wf_rmap (lmap locals2 vnew2) Slots Addr Writable Align P rmap2 s1 s2.
+Lemma init_paramP vnew1' locals1' rmap1' sao_param param vnew2' locals2' rmap2' aparam s1 s2 :
+  wf_pmap (lmap locals1' vnew1') rsp rip Slots Addr Writable Align ->
+  wf_rmap (lmap locals1' vnew1') Slots Addr Writable Align P rmap1' s1 s2 ->
+  List.In sao_param sao.(sao_params) ->
+  init_param mglob stack (vnew1', locals1', rmap1') sao_param param =
+    ok (vnew2', locals2', rmap2', aparam) ->
+  wf_pmap (lmap locals2' vnew2') rsp rip Slots Addr Writable Align /\
+  wf_rmap (lmap locals2' vnew2') Slots Addr Writable Align P rmap2' s1 s2.
 Proof.
   move=> hpmap hrmap.
   case: (hpmap) => /= hrip hrsp hnew1 hnew2 hglobals hlocals hnew.
   case: (hrmap) => hwfsr hval hptr.
-  case: sao_param => [pi|[<- <- <- _] //].
+  case: sao_param => [pi|? [<- <- <- _] //] hinparams.
   t_xrbindP=> _ /assertP /eqP hregty _ /assertP /Sv_memP hnnew _ /assertP harrty
     _ /assertP /Sv_memP hnnew2.
   case heq: Mvar.get => //.
+  case heq1: Mvar.get => //.
+  case heq2: Mvar.get => //.
   move=> [<- <- <- _].
   split.
   + split=> //=.
@@ -4914,9 +4912,20 @@ Proof.
     rewrite Mvar.setP.
     case: eqP.
     + move=> <- [<-].
-      split; split=> /=. (*
-      + by apply in_Slots; right; congruence.
-      + by rewrite /Writable (stack_scope heq).
+      have hin: Sv.In pi.(pp_ptr) Slots_params.
+      + by apply in_Slots_params; exists pi.
+      split; split=> /=.
+      + by apply in_Slots; right; right.
+      + rewrite /Writable (pick_slot_params hin) /Writable_params.
+        by rewrite (init_params_get_pi hinparams).
+      + rewrite /Align (pick_slot_params hin) /Align_params.
+        by rewrite (init_params_get_pi hinparams).
+      + by apply Z.le_refl.
+      (* ??? *) amit.
+      
+      have: get_pi pi.(pp_ptr) = Some pi.
+      + init_params_get_pi apply /get_piP.
+        have /get_piP := hinparams. (stack_scope heq).
       by rewrite /Align (stack_scope heq) heq.
         by move=> _; apply hwfsr.*)
 Admitted.
