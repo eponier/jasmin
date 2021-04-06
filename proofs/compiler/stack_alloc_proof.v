@@ -4880,11 +4880,10 @@ Proof.
 Admitted.
 
 (* proofs are very similar to add_alloc, can we factorize ? *)
-Lemma init_paramP vnew1' locals1' rmap1' sao_param (param:var_i) vnew2' locals2' rmap2' aparam s1 s2 :
+Lemma init_param_wf vnew1' locals1' rmap1' sao_param (param:var_i) vnew2' locals2' rmap2' aparam s1 s2 :
   wf_pmap (lmap locals1' vnew1') rsp rip Slots Addr Writable Align ->
   wf_rmap (lmap locals1' vnew1') Slots Addr Writable Align P rmap1' s1 s2 ->
-  (sao_param = None \/ exists pi, sao_param = Some pi /\ get_pi param = Some pi) ->
-(*   List.In sao_param sao.(sao_params) -> *)
+  (sao_param <> None -> get_pi param = sao_param) ->
   init_param mglob stack (vnew1', locals1', rmap1') sao_param param =
     ok (vnew2', locals2', rmap2', aparam) ->
   wf_pmap (lmap locals2' vnew2') rsp rip Slots Addr Writable Align /\
@@ -4893,8 +4892,7 @@ Proof.
   move=> hpmap hrmap.
   case: (hpmap) => /= hrip hrsp hnew1 hnew2 hglobals hlocals hnew.
   case: (hrmap) => hwfsr hval hptr.
-  case: sao_param => [pi|? [<- <- <- _] //] hpi.
-  case: hpi => [//|[_ [[<-] hpi]]].
+  case: sao_param => [pi|? [<- <- <- _] //] /(_ ltac:(discriminate)) hpi.
   t_xrbindP=> _ /assertP /eqP hregty _ /assertP /Sv_memP hnnew _ /assertP harrty
     _ /assertP /Sv_memP hnnew2.
   case heq: Mvar.get => //.
@@ -4974,7 +4972,7 @@ Proof.
     eexists; split; first by reflexivity.
     simpl.
     (* Rin ?? *)
-    by eexists.
+    admit.
   move=> hneq /hptr [pky [hly hpky]].
   exists pky; split=> //.
   case: pky hly hpky => //= sy ofsy wsy zy yf hly hpky.
@@ -4984,23 +4982,59 @@ Proof.
   by have /hlocals /wfs_new /= := hly; congruence.
 Admitted.
 
-Lemma init_paramsP vnew pmap rmap sao_params params vnew' locals' rmap' params' :
-  wf_pmap (lmap pmap vnew) rsp rip Slots Addr Writable Align ->
-  init_params vnew pmap rmap sao_params params =
-    ok (vnew', locals', rmap', params') ->
-  wf_pmap (lmap locals' vnew') rsp rip Slots Addr Writable Align.
-Proof. (*
-  set wf_pmap := wf_pmap. (* hack due to typeclass interacting badly *)
-  rewrite /init_params.
-  elim: sao_params params vnew pmap rmap vnew' locals' rmap' params'.
-  + move=> [] //= ??????? ? [<- <- _ _]. done.
-  move=> sao_param sao_params ih [] //=.
-  t_xrbindP=> param params vnew lmap rmap vnew' locals' rmap' params' hbase -[[[vnew2 locals2] rmap2] param2] hparams.
-  move=> [[[vnew3 locals3] rmap3] param3] hmap [???] /= ?; subst vnew' locals' rmap' params'.
-  move: hmap => /=.
-  apply ih.
-  by apply (init_paramP hbase hparams). *)
-Abort.
+Lemma Forall2_size A B (R : A -> B -> Prop) l1 l2 :
+  List.Forall2 R l1 l2 -> size l1 = size l2.
+Proof. by move=> h; elim: h => // a b l1' l2' _ _ /= ->. Qed.
+
+(* TODO: move? *)
+Lemma Forall2_impl A B (R1 R2 : A -> B -> Prop) :
+  (forall a b, R1 a b -> R2 a b) ->
+  forall l1 l2,
+  List.Forall2 R1 l1 l2 ->
+  List.Forall2 R2 l1 l2.
+Proof.
+  move=> himpl l1 l2 hforall.
+  elim: hforall; eauto.
+Qed.
+
+Lemma get_pi_params :
+  List.Forall2 (fun opi (x:var_i) => opi <> None -> get_pi x = opi) sao.(sao_params) params.
+Proof.
+  apply (Forall2_impl
+    (R1:=fun opi (x:var_i) => opi <> None -> List.In (x.(v_var), opi) param_pairs)).
+  + move=> opi x h /h{h}h.
+    by rewrite /get_pi (mem_uniq_assoc h uniq_param_pairs).
+  rewrite /param_pairs.
+  move: hparams.
+  elim: sao_params params vnew1 locals1 rmap1 vnew2 locals2 rmap2 alloc_params.
+  + by move=> [|//].
+  move=> opi sao_params ih [//|x params'].
+  rewrite /init_params /=.
+  t_xrbindP=> _ _ _ _ _ _ _ -[[[_ _] _] _] _ [[[_ _] _] _] /ih{ih}ih _ _.
+  constructor.
+  + by case: opi => [pi|//] _ /=; left.
+  apply: Forall2_impl ih.
+  move=> opi' x' h /h.
+  by case: opi => [pi|//] /= ?; right.
+Qed.
+
+Lemma init_params_wf s1 s2 :
+  wf_pmap (lmap locals2 vnew2) rsp rip Slots Addr Writable Align /\
+  wf_rmap (lmap locals2 vnew2) Slots Addr Writable Align P rmap2 s1 s2.
+Proof.
+  move: get_pi_params hparams.
+  have := init_local_map_wf s1 s2.
+  elim: sao_params params vnew1 locals1 rmap1 vnew2 locals2 rmap2 alloc_params.
+  + by move=> [|//] ??????? [hpmap hrmap] _ [<- <- <- _].
+  move=> opi sao_params ih [//|param params'] vnew0 locals0 rmap0 vnew2' locals2' rmap2' alloc_params'.
+  move=> [hpmap hrmap] hforall.
+  inversion_clear hforall.
+  rewrite /init_params /=.
+  apply rbindP=> -[[[vnew1' locals1'] rmap1'] alloc_param] /init_param_wf h.
+  t_xrbindP=> -[[[??]?]?] /ih{ih}ih [<- <- <-] _.
+  apply ih => //.
+  by apply h.
+Qed.
 
 End INIT_STACK.
 
