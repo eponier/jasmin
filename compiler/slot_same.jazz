@@ -2,12 +2,12 @@ u64[4] a = {0,1,2,3};
 u64[4] g2 = {0,1,2,3};
 
 // si on met u64[4], l'erreur est étrange. A report ?
-export fn foo (reg u64 x) -> reg u64 {
+fn foo (reg ptr u64[2] x, reg u64 x1, reg u64 x2, reg u64 x3, reg u64 x4) -> reg u64 {
   stack u64[4] a;
   stack u64[4] b;
   stack u64[4] c;
   stack u64[4] coucou;
-  reg ptr u64[4] test;
+  stack u64 bla;
   reg u64 r;
   reg u64 r2;
   reg u64 r3;
@@ -23,28 +23,42 @@ r+=r4;
 r2 = r;
 r3 = r;
 r4 = r;
+bla = r;
   
   /* for i = 0 to 4 {
     a[i] = 0;
   } */
+r += 2;
   a = g2;
-  r += test[0];
+//  r += test[0];
+  r+=x[0];
+  r+=x1;
+  r+=x2;
+  r+=x3;
+  r+=x4;
+  //r+=x7;
+  //r+=x8;
+  //r+=x9;
+  //r+=x10;
+  //r+=x11;
+  r+=(u64)[x4];
   for i = 0 to 4 {
-   r += a[i];
-    coucou[i] = r;
+   r += a[u64 i];
+    coucou[i] = 3;
   }
 
 
   for i = 0 to 4 {
-   r += coucou[i];
-    b[i] = r;
+   r += coucou[u64 i];
+    b[i] = 3; //(64u) r;
   }
 r += r2;
 r += r3;
 r += r4;
+r += bla;
 for i = 0 to 4 {
-   r += b[i];
-   c[i] = r;
+   r += b[u64 i];
+   c[i] = 8;//(64u) r;
 }
 for i = 0 to 4 {
    r += c[i];

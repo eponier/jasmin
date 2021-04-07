@@ -133,18 +133,19 @@ let memory_analysis pp_comp_ferr ~debug tbl up =
         sao_return_address = RAnone;
         } in 
 
-    let find_and_replace (slot, var) (x, pki) =
-      match pki with
-      | Stack_alloc.PIregptr (_) -> (slot, if var = None then Some x else var)
-      | Stack_alloc.PIdirect (_, _, Slocal) -> ((if slot = None then Some pki else slot), var)
-      | _ -> (slot, var)
+    let find_and_replace var opi =
+      match opi with
+      | None -> var
+      | Some pi -> if var = None then Some pi.Stack_alloc.pp_ptr else var
     in
-    let (slot, var) = List.fold_left find_and_replace (None, None) sao.sao_alloc in
-    let (slot, var) =
-      match slot, var with | Some slot, Some var -> slot, var | _ -> assert false
+    let var = List.fold_left find_and_replace None sao.sao_params in
+    let var =
+      match var with | Some var -> var | _ -> assert false
     in
-    let sao_alloc2 = (var, slot) :: sao.sao_alloc in
+    let sao_slots2 = List.map (fun ((x, z), ws) -> let x = if Stack_alloc.size_of x.Var0.Var.vtype = Conv.z_of_int 8 then var else x in ((x, z), ws)) sao.sao_slots in
+    let sao_alloc2 = List.map (fun (x, pki) -> let pki = if Type.(x.Var0.Var.vtype = Coq_sword U64) then Stack_alloc.(match pki with | PIdirect (_s, z, sc)  -> PIdirect (var, z, sc) | _ -> pki) else pki in (x, pki)) sao.sao_alloc in
     let sao2 = Stack_alloc.{ sao with
+      sao_slots = sao_slots2;
       sao_alloc = sao_alloc2
     }
     in
