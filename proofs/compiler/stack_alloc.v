@@ -1025,9 +1025,9 @@ Definition alloc_call (sao_caller:stk_alloc_oracle_t) rmap ini rs fn es :=
   let sao_callee := local_alloc fn in
   Let es  := alloc_call_args rmap sao_callee.(sao_params) es in
   Let rs  := alloc_call_res  rmap es sao_callee.(sao_return) rs in
- (* Let _   := assert (sao_caller.(sao_size) + sao_caller.(sao_extra_size) + sao_callee.(sao_max_size) <=? sao_caller.(sao_max_size))%Z
+  Let _   := assert (sao_caller.(sao_size) + sao_caller.(sao_extra_size) + sao_callee.(sao_max_size) <=? sao_caller.(sao_max_size))%Z
                     (Cerr_stk_alloc "error in max_size computation, please report")
-  in *)
+  in
   let es  := map snd es in
   ok (rs.1, Ccall ini rs.2 fn es).
 
