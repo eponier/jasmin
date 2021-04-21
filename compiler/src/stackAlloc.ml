@@ -132,24 +132,7 @@ let memory_analysis pp_comp_ferr ~debug tbl up =
         sao_rsp     = SavedStackNone; 
         sao_return_address = RAnone;
         } in 
-
-    let find_and_replace var opi =
-      match opi with
-      | None -> var
-      | Some pi -> if var = None then Some pi.Stack_alloc.pp_ptr else var
-    in
-    let var = List.fold_left find_and_replace None sao.sao_params in
-    let var =
-      match var with | Some var -> var | _ -> assert false
-    in
-    let sao_slots2 = List.map (fun ((x, z), ws) -> let x = if Stack_alloc.size_of x.Var0.Var.vtype = Conv.z_of_int 8 then var else x in ((x, z), ws)) sao.sao_slots in
-    let sao_alloc2 = List.map (fun (x, pki) -> let pki = if Type.(x.Var0.Var.vtype = Coq_sword U64) then Stack_alloc.(match pki with | PIdirect (_s, z, sc)  -> PIdirect (var, z, sc) | _ -> pki) else pki in (x, pki)) sao.sao_alloc in
-    let sao2 = Stack_alloc.{ sao with
-      sao_slots = sao_slots2;
-      sao_alloc = sao_alloc2
-    }
-    in
-    sao2 in
+    sao in
   
   let atbl = Hf.create 117 in 
   let get_sao fn = 
