@@ -29,7 +29,7 @@ let pp_sao tbl fmt sao =
     let ((var, ws), ofs) = slot in
     let var = Conv.var_of_cvar tbl var in
     let ofs = Conv.bi_of_z ofs in
-    Format.fprintf fmt "(%a, %s, %a)" (Printer.pp_var ~debug:true) var (Prog.string_of_ws ws) Bigint.pp_print ofs
+    Format.fprintf fmt "(%a (of type %a), %s, %a)" (Printer.pp_var ~debug:true) var Printer.pp_ty var.v_ty(Prog.string_of_ws ws) Bigint.pp_print ofs
   in
   let pp_sao_alloc fmt alloc =
     let pp_zone fmt z =
@@ -41,8 +41,7 @@ let pp_sao tbl fmt sao =
       match pki with
       | PIdirect (v, z, sc) ->
           let v = Conv.var_of_cvar tbl v in
-          let s = match sc with | Sglob -> "Glob" | Slocal -> "Stack" in
-          Format.fprintf fmt "%s %a %a" s (Printer.pp_var ~debug:false) v pp_zone z
+          Format.fprintf fmt "%s %a %a" (if sc = Sglob then "Glob" else "Stack") (Printer.pp_var ~debug:true) v pp_zone z
       | PIregptr v ->
           let v = Conv.var_of_cvar tbl v in
           Format.fprintf fmt "Reg ptr %a" (Printer.pp_var ~debug:true) v
@@ -85,10 +84,11 @@ let pp_sao tbl fmt sao =
       let ofs = Conv.bi_of_z ofs in
       Format.fprintf fmt "Stack %a" Bigint.pp_print ofs
   in
-  Format.fprintf fmt "@[<v>sao_align: %a@;sao_size: %a@;sao_extra_size: %a@;sao_params:@;<2 2>@[<v>%a@]@;sao_return:@;<2 2>@[<v>%a@]@;sao_slots:@;<2 2>@[<v>%a@]@;sao_alloc:@;<2 2>@[<v>%a@]@;sao_to_save:@;<2 2>@[<v>%a@]@;sao_rsp: %a@;sao_return_address: %a@]"
+  Format.fprintf fmt "@[<v>sao_align: %a@;sao_size: %a@;sao_extra_size: %a@;sao_max_size: %a@;sao_params:@;<2 2>@[<v>%a@]@;sao_return:@;<2 2>@[<v>%a@]@;sao_slots:@;<2 2>@[<v>%a@]@;sao_alloc:@;<2 2>@[<v>%a@]@;sao_to_save:@;<2 2>@[<v>%a@]@;sao_rsp: %a@;sao_return_address: %a@]"
     pp_sao_align sao.sao_align
     pp_sao_size sao.sao_size
     pp_sao_size sao.sao_extra_size
+    pp_sao_size sao.sao_max_size
     (Printer.pp_list "@;" pp_sao_param) sao.sao_params
     (Printer.pp_list "@;" pp_sao_return) sao.sao_return
     (Printer.pp_list "@;" pp_sao_slot) sao.sao_slots
@@ -106,7 +106,7 @@ let pp_oracle tbl up fmt saos =
   let pp_global_alloc fmt global_alloc =
     let ((var, ws), ofs) = global_alloc in
     let (var, ws, z) = (Conv.var_of_cvar tbl var, ws, Conv.bi_of_z ofs) in
-    Format.fprintf fmt "(%a, %s, %a)" (Printer.pp_var ~debug:true) var (Prog.string_of_ws ws) Bigint.pp_print z
+    Format.fprintf fmt "(%a (of type %a), %s, %a)" (Printer.pp_var ~debug:true) var Printer.pp_ty var.v_ty (Prog.string_of_ws ws) Bigint.pp_print z
   in
   let pp_stack_alloc fmt f =
     let stack_alloc = ao_stack_alloc (Conv.cfun_of_fun tbl f.f_name) in
