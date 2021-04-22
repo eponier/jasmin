@@ -469,6 +469,30 @@ Definition mk_ofsi aa ws e1 :=
   if is_const e1 is Some i then Some (i * (mk_scale aa ws))%Z
   else None.
 
+Section CHECK.
+
+(* The code in this file is called twice.
+   - First, it is called from the stack alloc OCaml oracle. Indeed, the oracle
+     returns initial results, and performs stack and reg allocation using
+     these results. Based on the program that it obtains,
+     it fixes some of the results and returns them.
+   - Second, it is called as a normal compilation pass on the results returned
+     by the oracle.
+
+   When the code is called from the OCaml oracle, all the checks
+   that are performed so that the pass can be proved correct are actually not
+   needed. We introduce this boolen [check] to deactivate some of the tests
+   when the code is called from the oracle.
+
+   TODO: deactivate more tests (or even do not use rmap) when [check] is [false]
+*)
+Variable (check : bool).
+
+Definition assert_check E b (e:E) :=
+  if check then assert b e
+  else ok tt.
+
+
 Section Section.
 
 Variables (pmap:pos_map).
@@ -1017,16 +1041,25 @@ Definition alloc_lval_call (srs:seq (option (bool * sub_region) * pexpr)) rmap (
 Definition alloc_call_res rmap srs ret_pos rs := 
   fmapM2 bad_lval_number (alloc_lval_call srs) rmap rs ret_pos.
 
-(* TODO: check sth about sao.(sao_max_size) *)
-(* cf. check in compiler/src/stackAlloc.ml wrt max_size *)
-(* sao.(sao_size) + sao.(sao_extra_size) *)
-(* TODO: this fails on the first round of stack_alloc for several files! *)
+Definition is_RAnone ral :=
+  if ral is RAnone then true else false.
+
 Definition alloc_call (sao_caller:stk_alloc_oracle_t) rmap ini rs fn es := 
   let sao_callee := local_alloc fn in
   Let es  := alloc_call_args rmap sao_callee.(sao_params) es in
   Let rs  := alloc_call_res  rmap es sao_callee.(sao_return) rs in
-  Let _   := assert (sao_caller.(sao_size) + sao_caller.(sao_extra_size) + sao_callee.(sao_max_size) <=? sao_caller.(sao_max_size))%Z
-                    (Cerr_stk_alloc "error in max_size computation, please report")
+  Let _   := assert_check (negb (is_RAnone sao_callee.(sao_return_address)))
+               (Cerr_stk_alloc "cannot call export function, please report")
+  in
+  Let _   :=
+    let local_size :=
+      round_ws sao_caller.(sao_align) (sao_caller.(sao_size) + sao_caller.(sao_extra_size))%Z
+    in
+    assert_check (local_size + sao_callee.(sao_max_size) <=? sao_caller.(sao_max_size))%Z
+                 (Cerr_stk_alloc "error in max size computation, please report")
+  in
+  Let _   := assert_check (sao_callee.(sao_align) <= sao_caller.(sao_align))%CMP
+               (Cerr_stk_alloc "non aligned function call, please report")
   in
   let es  := map snd es in
   ok (rs.1, Ccall ini rs.2 fn es).
@@ -1255,6 +1288,19 @@ Definition alloc_fd_aux p_extra mglob (local_alloc: funname -> stk_alloc_oracle_
         locals  := lmap;
         vnew    := sv;
       |} in
+  Let _ := assert (0 <=? sao.(sao_extra_size))%Z
+                  (Ferr_fun fn (Cerr_stk_alloc "negative extra size, please report"))
+  in
+  Let _ :=
+    let local_size :=
+      if is_RAnone sao.(sao_return_address) then
+        (sao.(sao_size) + sao.(sao_extra_size) + wsize_size sao.(sao_align) - 1)%Z
+      else
+        (round_ws sao.(sao_align) (sao.(sao_size) + sao.(sao_extra_size)))%Z
+    in
+    assert_check (local_size <=? sao.(sao_max_size))%Z
+                 (Ferr_fun fn (Cerr_stk_alloc "sao_max_size too small, please report"))
+  in
   Let rbody := add_finfo fn fn (fmapM (alloc_i pmap local_alloc sao) rmap fd.(f_body)) in
   let: (rmap, body) := rbody in
   Let res := 
@@ -1338,3 +1384,5 @@ Definition alloc_prog rip global_data global_alloc local_alloc (P:_uprog) : cfex
         |}
   else 
      Error (Ferr_msg (Cerr_stk_alloc "invalid data: please report")).
+
+End CHECK.

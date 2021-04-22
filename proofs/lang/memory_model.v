@@ -614,7 +614,7 @@ Parameter alloc_stack_complete : forall m ws sz sz',
   [&& 0 <=? sz, 0 <=? sz' &
   if is_align (top_stack m) ws
   then round_ws ws (sz + sz') <=? available (* tight bound *)
-  else sz + sz' + wsize_size ws <=? available (* loose bound, exact behavior is under-specified *)
+  else sz + sz' + wsize_size ws - 1 <=? available (* loose bound, exact behavior is under-specified *)
   ] →
   ∃ m', alloc_stack m ws sz sz' = ok m'.
 
