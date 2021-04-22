@@ -1233,6 +1233,7 @@ Definition check_result pmap rmap params oi (x:var_i) :=
     end
   | None => 
     Let _ := check_var pmap x in
+    Let _ := check_diff pmap x in
     ok x
   end.
 
@@ -1243,17 +1244,18 @@ Definition check_results pmap rmap params oi res :=
 (* is duplicate region the best error msg ? *)
 Definition init_param (mglob stack : Mvar.t (Z * wsize)) accu pi (x:var_i) := 
   let: (disj, lmap, rmap) := accu in
+  Let _ := assert (~~ Sv.mem x disj) (Cerr_stk_alloc "a parameter already exists, please report") in
+  if Mvar.get lmap x is Some _ then Error (Cerr_stk_alloc "a stack variable also occurs as a parameter, please report")
+  else
   match pi with
   | None => ok (accu, (None, x))
   | Some pi => 
     Let _ := assert (vtype pi.(pp_ptr) == sword Uptr) (Cerr_stk_alloc "bad ptr type: please report") in
     Let _ := assert (~~Sv.mem pi.(pp_ptr) disj) (Cerr_stk_alloc "duplicate region: please report") in
     Let _ := assert (is_sarr x.(vtype)) (Cerr_stk_alloc "bad reg ptr type, please report") in
-    Let _ := assert (~~ Sv.mem x disj) (Cerr_stk_alloc "invalid reg pointer already exists, please report") in
     if Mvar.get lmap pi.(pp_ptr) is Some _ then Error (Cerr_stk_alloc "a pointer is equal to a local var, please report")
     else if Mvar.get mglob x is Some _ then Error (Cerr_stk_alloc "a region is both glob and param, please report")
     else if Mvar.get stack x is Some _ then Error (Cerr_stk_alloc "a region is both stack and param, please report")
-    else if Mvar.get lmap x is Some _ then Error (Cerr_stk_alloc "a stack variable also occurs as a parameter, please report")
     else
     let r :=
       {| r_slot := x;

@@ -389,7 +389,7 @@ Proof.
   - by move => _ ty /write_noneP [] <-.
   - by move => x /write_var_emem <-.
   - t_xrbindP => /= ????? ?? ?? ? ? ? ? ? h <- /= ??.
-    by rewrite (CoreMem.write_validw _ _ h).
+    by rewrite (write_validw_eq h).
   - move => aa sz x e.
     by apply: on_arr_varP; t_xrbindP => ?????????????? <-.
   move => aa sz ty x e.
