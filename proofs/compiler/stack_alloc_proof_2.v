@@ -63,16 +63,15 @@ Proof.
   by rewrite hfss.(fss_frames) -hss.(ss_frames) hass.(ass_frames).
 Qed.
 
-Lemma init_free_stack_validw_stable fex pex gd (s1 s2 : estate) m2 :
-  init_stk_state fex pex gd s1 = ok s2 ->
-  stack_stable (emem s2) m2 ->
-  (validw (emem s2) =2 validw m2) ->
-  validw (emem s1) =2 validw (free_stack m2).
+Lemma alloc_free_validw_stable m1 ws sz sz' m2 m2' m3 :
+  alloc_stack_spec m1 ws sz sz' m2 ->
+  stack_stable m2 m2' ->
+  validw m2 =2 validw m2' ->
+  free_stack_spec m2' m3 ->
+  validw m1 =2 validw m3.
 Proof.
-  rewrite /init_stk_state.
-  t_xrbindP=> m1' /Memory.alloc_stackP hass [<-] /= hss hvalid.
-  have hfss := Memory.free_stackP m2.
-  move=> p ws.
+  move=> hass hss hvalid hfss.
+  move=> p ws'.
   congr (_ && _).
   apply: all_ziota => i hi.
   rewrite !valid8_validw.
@@ -94,7 +93,7 @@ Proof.
   move => ptr_i_lo ptr_i_hi.
   apply: ptr_not_fresh.
   split; first exact: ptr_i_lo.
-  move: (sf_stk_sz _) H ptr_i_hi; clear => n.
+  move: H ptr_i_hi; clear => n.
   lia.
 Qed.
 
@@ -123,15 +122,13 @@ Proof.
 Qed.
 
 Lemma write_lval_validw gd x v s s' :
-  write_lval gd x v s = ok s' →
-  emem s ≡ emem s'.
+  write_lval gd x v s = ok s' ->
+  validw (emem s) =2 validw (emem s').
 Proof.
   case: x => /=.
   - by move => _ ty /write_noneP [] <-.
   - by move => x /write_var_emem <-.
   - t_xrbindP => /= ????? ?? ?? ? ? ? ? ? h <- /=.
-    split.
-    + by apply (Memory.write_mem_stable h).
     by move=> ??; rewrite (write_validw_eq h).
   - move => aa sz x e.
     by apply: on_arr_varP; t_xrbindP => ?????????????? <-.
@@ -140,13 +137,13 @@ Proof.
 Qed.
 
 Lemma write_lvals_validw gd xs vs s s' :
-  write_lvals gd s xs vs = ok s' →
-  emem s ≡ emem s'.
+  write_lvals gd s xs vs = ok s' ->
+  validw (emem s) =2 validw (emem s').
 Proof.
   elim: xs vs s.
   - by case => // ? [] ->.
   move => x xs ih [] // v vs s /=; t_xrbindP => ? /write_lval_validw h /ih.
-  exact: (mem_equiv_trans h).
+  by move=> h1 p ws; rewrite h h1.
 Qed.
 
 Let Pc s1 (_: cmd) s2 : Prop := emem s1 ≡ emem s2.
@@ -165,10 +162,10 @@ Lemma validw_stable_mkI : sem_Ind_mkI P ev Pi_r Pi.
 Proof. by []. Qed.
 
 Lemma validw_stable_assgn : sem_Ind_assgn P Pi_r.
-Proof. by move => s1 s2 x tg ty e v v' ok_v ok_v' /write_lval_validw. Qed.
+Proof. by move => s1 s2 x tg ty e v v' ok_v ok_v' /dup[] /write_lval_validw ? /write_lval_stack_stable. Qed.
 
 Lemma validw_stable_opn : sem_Ind_opn P Pi_r.
-Proof. by move => s1 s2 tg op xs es; rewrite /sem_sopn; t_xrbindP => ???? /write_lvals_validw. Qed.
+Proof. by move => s1 s2 tg op xs es; rewrite /sem_sopn; t_xrbindP => ???? /dup[] /write_lvals_validw ? /write_lvals_stack_stable. Qed.
 
 Lemma validw_stable_if_true : sem_Ind_if_true P ev Pc Pi_r.
 Proof. by []. Qed.
@@ -200,7 +197,7 @@ Proof.
 Qed.
 
 Lemma validw_stable_call : sem_Ind_call P ev Pi_r Pfun.
-Proof. by move=> s1 m2 s2 ii xs fn args vargs vres _ _ ? /write_lvals_validw ?; red; etransitivity; eassumption. Qed.
+Proof. move=> s1 m2 s2 ii xs fn args vargs vres _ _ ? /dup[] /write_lvals_validw ? /write_lvals_stack_stable ?; red; etransitivity; [|split]; eassumption. Qed.
 
 Lemma validw_stable_proc : sem_Ind_proc P ev Pc Pfun.
 Proof.
@@ -328,48 +325,48 @@ Lemma sem_stack_stable_sprog (p : sprog) (gd : ptr) s1 c s2 :
   sem p gd s1 c s2 -> stack_stable (emem s1) (emem s2).
 Proof.
   apply sem_validw_stable => {s1 c s2}.
-  move=> s1 s2 m2 ef /= /dup[]; rewrite {1}/init_stk_state.
-  t_xrbindP=> m1 /Memory.alloc_stackP hass [<-] /= hinit [hss hvalid].
+  move=> s1 s2 m2 ef /=; rewrite /init_stk_state /finalize_stk_mem.
+  t_xrbindP=> m1 /Memory.alloc_stackP hass [<-] /= [hss hvalid].
+  have hfss := Memory.free_stackP m2.
   split.
-  + have hfss := Memory.free_stackP m2.
-    by apply (alloc_free_stack_stable hass hss hfss).
-  by apply (init_free_stack_validw_stable hinit hss hvalid).
+  + by apply (alloc_free_stack_stable hass hss hfss).
+  by apply (alloc_free_validw_stable hass hss hvalid).
 Qed.
 
 Lemma sem_validw_stable_sprog (p : sprog) (gd : ptr) s1 c s2 :
   sem p gd s1 c s2 → validw (emem s1) =2 validw (emem s2).
 Proof.
   apply sem_validw_stable => {s1 c s2}.
-  move=> s1 s2 m2 ef /= /dup[]; rewrite {1}/init_stk_state.
-  t_xrbindP=> m1 /Memory.alloc_stackP hass [<-] /= hinit [hss hvalid].
+  move=> s1 s2 m2 ef /=; rewrite /init_stk_state /finalize_stk_mem.
+  t_xrbindP=> m1 /Memory.alloc_stackP hass [<-] /= [hss hvalid].
+  have hfss := Memory.free_stackP m2.
   split.
-  + have hfss := Memory.free_stackP m2.
-    by apply (alloc_free_stack_stable hass hss hfss).
-  by apply (init_free_stack_validw_stable hinit hss hvalid).
+  + by apply (alloc_free_stack_stable hass hss hfss).
+  by apply (alloc_free_validw_stable hass hss hvalid).
 Qed.
 
 Lemma sem_i_validw_stable_sprog (p : sprog) (gd : ptr) s1 c s2 :
   sem_i p gd s1 c s2 → validw (emem s1) =2 validw (emem s2).
 Proof.
   apply sem_i_validw_stable => {s1 c s2}.
-  move=> s1 s2 m2 ef /= /dup[]; rewrite {1}/init_stk_state.
-  t_xrbindP=> m1 /Memory.alloc_stackP hass [<-] /= hinit [hss hvalid].
+  move=> s1 s2 m2 ef /=; rewrite /init_stk_state /finalize_stk_mem.
+  t_xrbindP=> m1 /Memory.alloc_stackP hass [<-] /= [hss hvalid].
+  have hfss := Memory.free_stackP m2.
   split.
-  + have hfss := Memory.free_stackP m2.
-    by apply (alloc_free_stack_stable hass hss hfss).
-  by apply (init_free_stack_validw_stable hinit hss hvalid).
+  + by apply (alloc_free_stack_stable hass hss hfss).
+  by apply (alloc_free_validw_stable hass hss hvalid).
 Qed.
 
 Lemma sem_I_validw_stable_sprog (p : sprog) (gd : ptr) s1 c s2 :
   sem_I p gd s1 c s2 → validw (emem s1) =2 validw (emem s2).
 Proof.
   apply sem_I_validw_stable => {s1 c s2}.
-  move=> s1 s2 m2 ef /= /dup[]; rewrite {1}/init_stk_state.
-  t_xrbindP=> m1 /Memory.alloc_stackP hass [<-] /= hinit [hss hvalid].
+  move=> s1 s2 m2 ef /=; rewrite /init_stk_state /finalize_stk_mem.
+  t_xrbindP=> m1 /Memory.alloc_stackP hass [<-] /= [hss hvalid].
+  have hfss := Memory.free_stackP m2.
   split.
-  + have hfss := Memory.free_stackP m2.
-    by apply (alloc_free_stack_stable hass hss hfss).
-  by apply (init_free_stack_validw_stable hinit hss hvalid).
+  + by apply (alloc_free_stack_stable hass hss hfss).
+  by apply (alloc_free_validw_stable hass hss hvalid).
 Qed.
 
 Section INIT.
@@ -378,6 +375,9 @@ Variable global_data : seq u8.
 Variable global_alloc : seq (var * wsize * Z).
 
 Let glob_size := Z.of_nat (size global_data).
+
+Variable rip : u64.
+Hypothesis no_overflow_glob_size : no_overflow rip glob_size.
 
 Variable mglob : Mvar.t (Z * wsize).
 
@@ -659,22 +659,20 @@ Hypothesis disjoint_globals_locals :
   disjoint_zrange rip gsize rsp size.
 *)
 
-Variables rip rsp : u64.
 Record wf_Slots (Slots : Sv.t) Addr (Writable:slot-> bool) Align := {
   wfsl_no_overflow : forall s, Sv.In s Slots -> no_overflow (Addr s) (size_slot s);
   wfsl_disjoint : forall s1 s2, Sv.In s1 Slots -> Sv.In s2 Slots -> s1 <> s2 ->
     Writable s1 -> disjoint_zrange (Addr s1) (size_slot s1) (Addr s2) (size_slot s2);
   wfsl_align : forall s, Sv.In s Slots -> is_align (Addr s) (Align s);
   wfsl_not_glob : forall s, Sv.In s Slots -> Writable s ->
-    disjoint_zrange rip glob_size (Addr s) (size_slot s)
+    0 < glob_size -> disjoint_zrange rip glob_size (Addr s) (size_slot s)
 }.
 
-Hypothesis no_overflow_glob_size : no_overflow rip glob_size.
+Variable rsp : u64.
 Hypothesis no_overflow_size : no_overflow rsp sao.(sao_size).
-(* TODO: peut-être ajouter des conditions glob_size > 0 et sao.(sao_size) > 0
-   (cf. valid_state 1ère version)
-*)
-Hypothesis disjoint_zrange_globals_locals : disjoint_zrange rip glob_size rsp sao.(sao_size).
+Hypothesis disjoint_zrange_globals_locals :
+  0 < glob_size -> 0 < sao.(sao_size) ->
+  disjoint_zrange rip glob_size rsp sao.(sao_size).
 Hypothesis rip_align : is_align rip U256.
   (* could be formulated [forall ws, is_align rip ws] (cf. extend_mem) *)
 Hypothesis rsp_align : is_align rsp sao.(sao_align).
@@ -785,19 +783,6 @@ Proof. (*
     move=> _.
     rewrite /Addr_params /Align_params h1. done. *)
 Abort.
-
-Lemma disjoint_zrange_globals_params :
-  forall s, Sv.In s Slots_params -> Writable_params s ->
-  disjoint_zrange rip glob_size (Addr_params s) (size_slot s).
-Proof.
-  (* add to Rin_aux ? *)
-Admitted.
-Lemma disjoint_zrange_locals_params :
-  forall s, Sv.In s Slots_params ->
-  disjoint_zrange rsp sao.(sao_size) (Addr_params s) (size_slot s).
-Proof.
-  (* alloc_stack_spec *)
-Admitted.
 
 (* Slots : glob + stack + params *)
 Definition Slots :=
@@ -1275,6 +1260,31 @@ Proof.
   by move /disjointP : disjoint_locals_params => h /h.
 Qed.
 
+
+Lemma disjoint_zrange_globals_params :
+  forall s, Sv.In s Slots_params -> Writable_params s ->
+  0 < glob_size -> disjoint_zrange rip glob_size (Addr_params s) (size_slot s).
+Proof.
+  (* add to Rin_aux ? *)
+Admitted.
+Lemma disjoint_zrange_locals_params :
+  forall s, Sv.In s Slots_params -> 0 < sao.(sao_size) ->
+  disjoint_zrange rsp sao.(sao_size) (Addr_params s) (size_slot s).
+Proof.
+  move=> s hin hlt.
+  have /in_Slots_params := hin.
+  case heq: get_pi => [[pi v]|//] _.
+  have := get_pi_Rin heq.
+  move=> [v1 [/= hrin hle _]].
+  case: hrin => p [? _ hover hvalid _]; subst v.
+  rewrite /Addr_params heq.
+  apply disjoint_zrange_U8 => //.
+  apply size_slot_gt0.
+  move: hover; rewrite /no_overflow !zify; lia.
+  move=> k hk.
+  (* alloc_stack_spec : should we assume slot_valid or directly valid_state ? *)
+Admitted.
+
 (* TODO: clean? *)
 Lemma wf_Slots_params :
   wf_Slots Slots_params Addr_params Writable_params Align_params.
@@ -1323,6 +1333,7 @@ Proof.
   by apply wf_Slots_params.
 Qed.
 
+(* TODO: clean *)
 Lemma Hdisjoint_writable : forall s1 s2, Sv.In s1 Slots -> Sv.In s2 Slots -> s1 <> s2 ->
   Writable s1 -> disjoint_zrange (Addr s1) (size_slot s1) (Addr s2) (size_slot s2).
 Proof.
@@ -1333,11 +1344,21 @@ Proof.
   + by move: hw; rewrite /Writable (pick_slot_globals hin1).
   + move /in_Slots : hin2 => [hin2|[hin2|hin2]].
     + apply disjoint_zrange_sym.
-      apply: disjoint_zrange_incl disjoint_zrange_globals_locals.
+      apply: disjoint_zrange_incl (disjoint_zrange_globals_locals _ _).
       + rewrite /Addr (pick_slot_globals hin2).
         by apply (zbetween_Addr_globals hin2).
-      rewrite /Addr (pick_slot_locals hin1).
-      by apply (zbetween_Addr_locals hin1).
+      + rewrite /Addr (pick_slot_locals hin1).
+        by apply (zbetween_Addr_locals hin1).
+      + move /in_Slots_slots : hin2.
+        case heq: Mvar.get => [[ofs ws]|//] _.
+        have := init_map_bounded heq.
+        have := size_slot_gt0 sl2.
+        by lia.
+      move /in_Slots_slots : hin1.
+      case heq: Mvar.get => [[ofs ws]|//] _.
+      have := init_stack_layout_bounded heq.
+      have := size_slot_gt0 sl1.
+      by lia.
     + split=> //.
       rewrite /Addr (pick_slot_locals hin1) (pick_slot_locals hin2).
       move /in_Slots_slots : hin1.
@@ -1349,18 +1370,33 @@ Proof.
       have := init_stack_layout_disjoint heq1 heq2 hneq.
       by lia.
     rewrite /Addr (pick_slot_locals hin1) (pick_slot_params hin2).
-    apply: disjoint_zrange_incl_l (disjoint_zrange_locals_params hin2).
-    by apply (zbetween_Addr_locals hin1).
+    apply: disjoint_zrange_incl_l (disjoint_zrange_locals_params hin2 _).
+    + by apply (zbetween_Addr_locals hin1).
+    move /in_Slots_slots : hin1.
+    case heq: Mvar.get => [[ofs ws]|//] _.
+    have := init_stack_layout_bounded heq.
+    have := size_slot_gt0 sl1.
+    by lia.
   move /in_Slots : hin2 => [hin2|[hin2|hin2]].
   + rewrite /Addr (pick_slot_params hin1) (pick_slot_globals hin2).
     rewrite /Writable (pick_slot_params hin1) in hw.
     apply disjoint_zrange_sym.
-    apply: disjoint_zrange_incl_l (disjoint_zrange_globals_params hin1 hw).
-    by apply (zbetween_Addr_globals hin2).
+    apply: disjoint_zrange_incl_l (disjoint_zrange_globals_params hin1 hw _).
+    + by apply (zbetween_Addr_globals hin2).
+    move /in_Slots_slots : hin2.
+    case heq: Mvar.get => [[ofs ws]|//] _.
+    have := init_map_bounded heq.
+    have := size_slot_gt0 sl2.
+    by lia.
   + rewrite /Addr (pick_slot_params hin1) (pick_slot_locals hin2).
     apply disjoint_zrange_sym.
-    apply: disjoint_zrange_incl_l (disjoint_zrange_locals_params hin1).
-    by apply (zbetween_Addr_locals hin2).
+    apply: disjoint_zrange_incl_l (disjoint_zrange_locals_params hin1 _).
+    + by apply (zbetween_Addr_locals hin2).
+    move /in_Slots_slots : hin2.
+    case heq: Mvar.get => [[ofs ws]|//] _.
+    have := init_stack_layout_bounded heq.
+    have := size_slot_gt0 sl2.
+    by lia.
   rewrite /Addr (pick_slot_params hin1) (pick_slot_params hin2).
   rewrite /Writable (pick_slot_params hin1) in hw.
   by apply wf_Slots_params.
@@ -1391,15 +1427,22 @@ Proof.
   by apply wf_Slots_params.
 Qed.
 
-Lemma Hwritable_not_glob : forall s, Sv.In s Slots -> Writable s ->
-  disjoint_zrange rip glob_size (Addr s) (size_slot s).
+Lemma Hwritable_not_glob :
+  forall s, Sv.In s Slots -> Writable s ->
+  0 < glob_size -> disjoint_zrange rip glob_size (Addr s) (size_slot s).
 Proof.
   move=> s /in_Slots [hin|[hin|hin]].
   + by rewrite /Writable (pick_slot_globals hin).
-  + move=> _.
-    apply: disjoint_zrange_incl_r disjoint_zrange_globals_locals.
-    rewrite /Addr (pick_slot_locals hin).
-    by apply (zbetween_Addr_locals hin).
+  + move=> _ hlt.
+    apply: disjoint_zrange_incl_r (disjoint_zrange_globals_locals _ _).
+    + rewrite /Addr (pick_slot_locals hin).
+      by apply (zbetween_Addr_locals hin).
+    + done.
+    move /in_Slots_slots : hin.
+    case heq: Mvar.get => [[ofs ws]|//] _.
+    have := init_stack_layout_bounded heq.
+    have := size_slot_gt0 s.
+    by lia.
   rewrite /Writable /Addr !(pick_slot_params hin).
   by apply wf_Slots_params.
 Qed.
@@ -2189,7 +2232,34 @@ Proof.
       + apply is_align_no_overflow. apply is_align8.
       subst rsp.
       lia.
-    admit.
+    have /in_Slots_params := hin.
+    case heq: get_pi => [[pi v]|//] _.
+    have := get_pi_Rin hsub heq=> -[v1 [[p [?? hover hvalidp ?]] ? ?]]; subst v.
+    rewrite /Addr (pick_slot_params hin) /Addr_params heq.
+    have := hext.(em_fresh) hvalid.
+    (* probably another thing to add to Rin that should take as arguments
+    both the input and target memories... *) (*
+    apply disjoint_zrange_sym.
+    apply disjoint_zrange_U8.
+    done. apply size_slot_gt0.
+    move: hover; rewrite /no_overflow !zify; lia.
+    move=> k hk.
+    have hb: between p (size_of (type_of_val v1)) (p+wrepr _ k) U8.
+    + apply: between_byte hk.
+      move: hover; rewrite /no_overflow !zify; lia.
+      rewrite /zbetween !zify; lia.
+    move: (hvalidp _ hb).
+    move=> /halloc.(ass_fresh) ?.
+    split.
+    apply is_align_no_overflow. apply is_align8.
+    apply (no_overflow_incl hb).
+    move: hover; rewrite /no_overflow !zify; lia.
+    alloc_stack_spec
+    lia.
+    
+    have := hext.(em_valid) w. rewrite hvalid /=. move=> /idP hh.
+    have := halloc.(ass_fresh). rewrite H6 /=.
+    move=> /(_ _ _ hh). *) admit.
   + move=> /= p. rewrite halloc.(ass_valid) /=.
     move=> ?. apply /orP; left.
     rewrite H6 hext.(em_valid).
@@ -2205,7 +2275,9 @@ Proof.
     rewrite get_var_neq. rewrite get_var_neq. done.
     have /rsp_in_new := hpmap. simpl. subst vrsp0 => /=. congruence.
     have /rip_in_new := hpmap. simpl. subst vrip0 => /=. congruence.
-  + admit. (* apply init_local_map_wf_rmap. *) (*
+  + have := init_local_map_wf_rmap.
+  
+   (* apply init_local_map_wf_rmap. *) (*
     move=> /=.
     move=> i hi.
     rewrite -halloc.(ass_read_old8) /=.
@@ -2300,142 +2372,52 @@ Proof.
 Admitted.
 *)
 End LOCAL.
-(*
-Context (rip : ptr) (glob_data : seq u8).
-Context (pmap : pos_map).
-Context (rsp : ptr).
-Context (Slots : Sv.t).
-Context (Addr : slot -> u64).
-Context (Writable : slot -> bool).
-Context (Align : slot -> wsize).
-Context (p: sprog) (gd: ptr).
 
-Lemma write_lval_stack_stable gd x v s s' :
-  write_lval gd x v s = ok s' →
-  forall m1,
-  valid_state pmap rsp rip Slots Addr Writable Align p rmap m0 (emem
-  extend_mem m1 (emem s) rip glob_data ->
-  extend_mem m1 (emem s') rip glob_data.
+Lemma zbetween_not_disjoint_zrange p1 s1 p2 s2 :
+  zbetween p1 s1 p2 s2 ->
+  0 < s2 ->
+  ~ disjoint_zrange p1 s1 p2 s2.
+Proof. by rewrite /zbetween !zify => hb hlt [_ _ ?]; lia. Qed.
+
+Lemma valid_state_extend_mem pmap rsp Slots Addr Writable Align rmap m0 s1 s2 :
+  wf_Slots Slots Addr Writable Align ->
+  valid_state pmap glob_size rsp rip Slots Addr Writable Align P rmap m0 s1 s2 ->
+  extend_mem (emem s1) (emem s2) rip global_data ->
+  forall rmap' s1' s2',
+  valid_state pmap glob_size rsp rip Slots Addr Writable Align P rmap' m0 s1' s2' ->
+  validw (emem s1) =2 validw (emem s1') ->
+  validw (emem s2) =2 validw (emem s2') ->
+  extend_mem (emem s1') (emem s2') rip global_data.
 Proof.
-  case: x => [ vi ty | x | ws x e | aa ws x e | aa ws len x e ].
-  - apply: on_vuP; first by move => _ _ ->.
-    by move => _; case: ifP => // _ [<-].
-  - by move => /write_var_emem ->.
-  - rewrite /=; t_xrbindP => ?????????? m' ok_m' <- /=.
-    exact: Memory.write_mem_stable ok_m'.
-  all: by apply: on_arr_varP; t_xrbindP => ?????????????? <-.
+  move=> hwf hvs hext rmap' s1' s2' hvs' hvalid1 hvalid2.
+  case:(hext) => hover halign hold hfresh hvalid hnew.
+  split=> //=.
+  + by apply (vs_eq_mem (valid_state := hvs')).
+  + move=> p hvalidp.
+    apply hfresh.
+    by rewrite hvalid1.
+  + move=> p.
+    by rewrite -hvalid1 -hvalid2.
+  move=> i hi.
+  have hb: between rip glob_size (rip + wrepr _ i)%R U8.
+  + apply: between_byte hi => //.
+    by apply zbetween_refl.
+  have hvalid0: validw m0 (rip + wrepr _ i)%R U8.
+  + by apply (vs_glob_valid (valid_state := hvs)).
+  have hnvalid1: ~ validw (emem s1) (rip + wrepr _ i)%R U8.
+  + move=> /hfresh.
+    by apply zbetween_not_disjoint_zrange.
+  have hdisjoint: forall s, Sv.In s Slots -> Writable s ->
+    disjoint_zrange (Addr s) (size_slot s) (rip + wrepr U64 i) (wsize_size U8).
+  + move=> s hin hw.
+    apply disjoint_zrange_sym.
+    apply (disjoint_zrange_incl_l hb).
+    apply hwf.(wfsl_not_glob) => //.
+    by lia.
+  rewrite -(vs_unchanged (valid_state:=hvs')) //; last by rewrite -hvalid1.
+  rewrite (vs_unchanged (valid_state:=hvs)) //.
+  by apply hnew.
 Qed.
-
-Lemma write_lvals_stack_stable gd xs vs s s' :
-  write_lvals gd s xs vs = ok s' →
-  emem s ≡ emem s'.
-Proof.
-  elim: xs vs s => [ | x xs ih ] [] //; first by move => ? [<-].
-  by move => v vs s /=; t_xrbindP => ? /write_lval_stack_stable -> /ih.
-Qed.
-
-
-Let Pc (s1: estate) (c: cmd) (s2: estate) : Prop := 
-  forall m1, extend_mem m1 (emem s1) rip glob_data ->
-  extend_mem m1 (emem s2) rip glob_data.
-Let Pi_r (s1: estate) (ir: instr_r) (s2: estate) : Prop :=
-  forall m1, extend_mem m1 (emem s1) rip glob_data ->
-  extend_mem m1 (emem s2) rip glob_data.
-Let Pi (s1: estate) (i: instr) (s2: estate) : Prop :=
-forall m1, extend_mem m1 (emem s1) rip glob_data ->
-  extend_mem m1 (emem s2) rip glob_data.
-Let Pfor (x: var_i) (dom: seq Z) (s1: estate) (c: cmd) (s2: estate) : Prop :=
-forall m1, extend_mem m1 (emem s1) rip glob_data ->
-  extend_mem m1 (emem s2) rip glob_data.
-Let Pfun (m1: mem) (fn: funname) (args: seq value) (m2: mem) (res: seq value) : Prop :=
-forall m1', extend_mem m1' m1 rip glob_data ->
-  extend_mem m1' m2 rip glob_data.
-
-Local Lemma Hnil : sem_Ind_nil Pc.
-Proof. by move=> s m1. Qed.
-
-Local Lemma Hcons : sem_Ind_cons p gd Pc Pi.
-Proof. move => s1 s2 s3 i c _ h1 _ h2 m1 hext.
-  apply h2.
-  by apply h1.
-Qed.
-
-Local Lemma HmkI : sem_Ind_mkI p gd Pi_r Pi.
-Proof. done. Qed.
-
-Local Lemma Hassgn : sem_Ind_assgn p Pi_r.
-Proof. move=> s1 s2 x tg ty e v v' ok_v ok_v'. /write_lval_stack_stable. Qed.
-
-Local Lemma Hopn : sem_Ind_opn p Pi_r.
-Proof. by move => s1 s2 tg op xs es; rewrite /sem_sopn; t_xrbindP => ???? /write_lvals_stack_stable. Qed.
-
-Local Lemma Hif_true : sem_Ind_if_true p gd Pc Pi_r.
-Proof. by []. Qed.
-
-Local Lemma Hif_false : sem_Ind_if_false p gd Pc Pi_r.
-Proof. by []. Qed.
-
-Local Lemma Hwhile_true : sem_Ind_while_true p gd Pc Pi_r.
-Proof.
-  move => s1 s2 s3 s4 aa c e c' _ A _ _ B _ C; red.
-  etransitivity; first exact: A.
-  etransitivity; first exact: B.
-  exact: C.
-Qed.
-
-Local Lemma Hwhile_false : sem_Ind_while_false p gd Pc Pi_r.
-Proof. by []. Qed.
-
-Local Lemma Hfor : sem_Ind_for p gd Pi_r Pfor.
-Proof. by []. Qed.
-
-Local Lemma Hfor_nil : sem_Ind_for_nil Pfor.
-Proof. by []. Qed.
-
-Local Lemma Hfor_cons : sem_Ind_for_cons p gd Pc Pfor.
-Proof.
-  move => ???????? /write_var_emem A _ B _ C; red.
-  rewrite A; etransitivity; [ exact: B | exact: C ].
-Qed.
-
-Local Lemma Hcall : sem_Ind_call p gd Pi_r Pfun.
-Proof.
-  move => s1 m2 s2 ii xs fn args vargs vs _ _ A /write_lvals_stack_stable B; red.
-  etransitivity; [ exact: A | exact: B ].
-Qed.
-
-Local Lemma Hproc : sem_Ind_proc p gd Pc Pfun.
-Proof.
-  red.
-  move => m _ fn fd vargs vargs' s0 s1 s2 vres vres' _ _ A /write_vars_emem B _ C _ _ ->; red.
-  move: A; rewrite /= /init_stk_state /finalize_stk_mem; t_xrbindP => /= m' ok_m' [?]; subst s0.
-  move: B => /= ?; subst m'.
-  have ok_free := free_stackP (emem s2).
-  split; last by rewrite (fss_frames ok_free) -C.(ss_frames) (alloc_stackP ok_m').(ass_frames).
-  + rewrite (fss_root ok_free) -(alloc_stackP ok_m').(ass_root).
-    exact: ss_root C.
-  rewrite (fss_limit ok_free) -(alloc_stackP ok_m').(ass_limit).
-  exact: ss_limit C.
-Qed.
-
-Lemma sem_stack_stable s1 c s2 :
-  sem p gd s1 c s2 → stack_stable (emem s1) (emem s2).
-Proof.
-  exact:
-    (@sem_Ind _ _ _ p gd Pc Pi_r Pi Pfor Pfun
-              Hnil Hcons HmkI Hassgn Hopn Hif_true Hif_false Hwhile_true Hwhile_false Hfor Hfor_nil Hfor_cons Hcall Hproc).
-Qed.
-
-Lemma sem_I_stack_stable s1 i s2 :
-  sem_I p gd s1 i s2 → stack_stable (emem s1) (emem s2).
-Proof.
-  exact:
-    (@sem_I_Ind _ _ _ p gd Pc Pi_r Pi Pfor Pfun
-              Hnil Hcons HmkI Hassgn Hopn Hif_true Hif_false Hwhile_true Hwhile_false Hfor Hfor_nil Hfor_cons Hcall Hproc).
-Qed.
-
-End STACK_STABLE.
-*)
 
 Section PROC.
 
@@ -2480,31 +2462,31 @@ Proof.
   by rewrite -(ss_top_stack hss) -(ss_limit hss).
 Qed.
 
-Variable rip : ptr. (* TODO: move *)
-
 Let Pi_r s1 (i1:instr_r) s2 :=
   forall pmap rsp Slots Addr Writable Align rmap1 rmap2 ii1 ii2 i2,
   wf_pmap pmap rsp rip Slots Addr Writable Align ->
-  wf_Slots rip Slots Addr Writable Align ->
+  wf_Slots Slots Addr Writable Align ->
   forall sao,
   alloc_i pmap local_alloc sao rmap1 (MkI ii1 i1) = ok (rmap2, MkI ii2 i2) ->
   forall m0 s1', valid_state pmap glob_size rsp rip Slots Addr Writable Align P rmap1 m0 s1 s1' ->
   extend_mem (emem s1) (emem s1') rip global_data ->
   wf_sao rsp (emem s1') sao ->
   exists s2', sem_i (sCP:= sCP_stack) P' rip s1' i2 s2' /\
-              valid_state pmap glob_size rsp rip Slots Addr Writable Align P rmap2 m0 s2 s2'.
+              valid_state pmap glob_size rsp rip Slots Addr Writable Align P rmap2 m0 s2 s2' /\
+              extend_mem (emem s2) (emem s2') rip global_data.
 
 Let Pi s1 (i1:instr) s2 :=
   forall pmap rsp Slots Addr Writable Align rmap1 rmap2 i2,
   wf_pmap pmap rsp rip Slots Addr Writable Align ->
-  wf_Slots rip Slots Addr Writable Align ->
+  wf_Slots Slots Addr Writable Align ->
   forall sao,
   alloc_i pmap local_alloc sao rmap1 i1 = ok (rmap2, i2) ->
   forall m0 s1', valid_state pmap glob_size rsp rip Slots Addr Writable Align P rmap1 m0 s1 s1' ->
   extend_mem (emem s1) (emem s1') rip global_data ->
   wf_sao rsp (emem s1') sao ->
   exists s2', sem_I (sCP:= sCP_stack) P' rip s1' i2 s2' /\
-              valid_state pmap glob_size rsp rip Slots Addr Writable Align P rmap2 m0 s2 s2'.
+              valid_state pmap glob_size rsp rip Slots Addr Writable Align P rmap2 m0 s2 s2' /\
+              extend_mem (emem s2) (emem s2') rip global_data.
 
 (*
 Let Pi_r s1 i1 s2 :=
@@ -2515,14 +2497,15 @@ Let Pi_r s1 i1 s2 :=
 Let Pc s1 (c1:cmd) s2 :=
   forall pmap rsp Slots Addr Writable Align rmap1 rmap2 c2,
   wf_pmap pmap rsp rip Slots Addr Writable Align ->
-  wf_Slots rip Slots Addr Writable Align ->
+  wf_Slots Slots Addr Writable Align ->
   forall sao,
   fmapM (alloc_i pmap local_alloc sao) rmap1 c1 = ok (rmap2, c2) ->
   forall m0 s1', valid_state pmap glob_size rsp rip Slots Addr Writable Align P rmap1 m0 s1 s1' ->
   extend_mem (emem s1) (emem s1') rip global_data ->
   wf_sao rsp (emem s1') sao ->
   exists s2', sem (sCP:= sCP_stack) P' rip s1' c2 s2' /\
-              valid_state pmap glob_size rsp rip Slots Addr Writable Align P rmap2 m0 s2 s2'.
+              valid_state pmap glob_size rsp rip Slots Addr Writable Align P rmap2 m0 s2 s2' /\
+              extend_mem (emem s2) (emem s2') rip global_data.
 
 Let Pfor (i1: var_i) (vs: seq Z) (s1: estate) (c: cmd) (s2: estate) := True.
 
@@ -2575,129 +2558,62 @@ Let Pfun (m1: mem) (fn: funname) (vargs: seq value) (m2: mem) (vres: seq value) 
 Local Lemma Hskip : sem_Ind_nil Pc.
 Proof.
   move=> s pmap rsp Slots Addr Writable Align rmap1 rmap2 /= c2 hpmap hwf sao [??] m0 s' hv hext hsao;subst rmap1 c2.
-  exists s'; split => //; exact: Eskip. 
+  exists s'; split => //; exact: Eskip.
 Qed.
 
 Local Lemma Hcons : sem_Ind_cons P ev Pc Pi.
 Proof.
   move=> s1 s2 s3 i c hhi Hi hhc Hc pmap rsp Slots Addr Writable Align rmap1 rmap3 c1 hpmap hwf sao /=.
   t_xrbindP => -[rmap2 i'] hi {rmap3} [rmap3 c'] hc /= <- <- m0 s1' hv hext hsao.
-  have [s2' [si hv2]]:= Hi _ _ _ _ _ _ _ _ _ hpmap hwf _ hi _ _ hv hext hsao.
+  have [s2' [si [hv2 hext2]]]:= Hi _ _ _ _ _ _ _ _ _ hpmap hwf _ hi _ _ hv hext hsao.
   have hsao2 := stack_stable_wf_sao (sem_I_stack_stable si) hsao.
-  have: extend_mem (emem s2) (emem s2') rip global_data.
-  + apply valid_state_extend_mem.
-  + case:(hext) => hover halign hold hfresh hvalid hnew.
-    split=> //=.
-    + move=> p h.
-      have /vs_eq_mem := hv2. rewrite /eq_mem_source. apply. done.
-    + move=> p ?. apply hfresh. rewrite (sem_I_validw_stable_uprog hhi). done.
-    + move=> p.
-      rewrite -(sem_I_validw_stable_sprog si).
-      rewrite -(sem_I_validw_stable_uprog hhi).
-      apply hvalid.
-    + move=> j hj.
-      have hh: validw m0 (rip + wrepr _ j)%R U8.
-      + have /vs_glob_valid := hv2.
-        apply.
-        apply: between_byte hj => //.
-        apply zbetween_refl.
-      have hh2 : ~ validw (emem s2) (rip + wrepr _ j)%R U8.
-      + rewrite -(sem_I_validw_stable_uprog hhi).
-        move=> /hext.(em_fresh).
-        apply zbetween_not_disjoint_zrange => //.
-        apply: between_byte hj => //.
-        by apply zbetween_refl.
-      have /vs_unchanged := hv2.
-      rewrite /mem_unchanged.
-      move=> /(_ _ hh hh2) <-.
-      admit.
-        
-      have /vs_unchanged := hv2.
-      move=> /( _ _ hh).
-      rewrite /mem_unchanged.
-  have [s3' [sc [hv3 hext3]]]:= Hc _ _ _ _ _ _ _ _ _ hpmap hwf _ hc _ _ hv2 hext hsao2.
+  have [s3' [sc [hv3 hext3]]]:= Hc _ _ _ _ _ _ _ _ _ hpmap hwf _ hc _ _ hv2 hext2 hsao2.
   by exists s3'; split => //; apply: Eseq; [exact: si|exact: sc].
 Qed.
 
 Local Lemma HmkI : sem_Ind_mkI P ev Pi_r Pi.
 Proof.
-  move=> ii i s1 s2 _ Hi pmap rsp Slots Addr Writable Align m0 rmap1 rmap2 [ii' ir'] hpmap hwf sao ha s1' hv hext hsao.
-  by have [s2' [Hs2'1 [Hs2'2 Hs2'3]]] := Hi _ _ _ _ _ _ _ _ _ _ _ _ hpmap hwf _ ha _ hv hext hsao; exists s2'; split.
+  move=> ii i s1 s2 _ Hi pmap rsp Slots Addr Writable Align rmap1 rmap2 [ii' ir'] hpmap hwf sao ha m0 s1' hv hext hsao.
+  by have [s2' [Hs2'1 [Hs2'2 Hs2'3]]] := Hi _ _ _ _ _ _ _ _ _ _ _ hpmap hwf _ ha _ _ hv hext hsao; exists s2'; split.
 Qed.
 
 Local Lemma Hassgn : sem_Ind_assgn P Pi_r.
 Proof.
-  move=> s1 s1' r tag ty e v v' hv htr hw pmap rsp Slots Addr Writable Align m0 rmap1 rmap2 ii1 ii2 i2 hpmap hwf sao /=.
-  t_xrbindP => -[rmap2' i2'] h /= ??? s2 hvs hext hsao; subst rmap2' ii1 i2'.
+  move=> s1 s1' r tag ty e v v' hv htr hw pmap rsp Slots Addr Writable Align rmap1 rmap2 ii1 ii2 i2 hpmap hwf sao /=.
+  t_xrbindP => -[rmap2' i2'] h /= ??? m0 s2 hvs hext hsao; subst rmap2' ii1 i2'.
   case: ifPn h => [/is_sarrP [n ?]| _ ].
   + subst ty; apply: add_iinfoP.
     move=> halloc.
     have [s2' [hs2' hvs']] := alloc_array_move_initP hwf.(wfsl_no_overflow) hwf.(wfsl_disjoint) hwf.(wfsl_align) hpmap P'_globs hvs hv htr hw halloc.
     exists s2'; split=> //; split=> //.
-    
-    move=> {hext}.
-    have hext: extend_mem (emem s1) m0 rip (P'.(p_extra).(sp_globs)).
-    + admit.
-    case: (hext) => h1 h2 h3 h4 h5 h6.
-    split=> //=.
-    + have /vs_eq_mem := hvs'. done.
-    + move=> p hvalid.
-      apply h4.
-      Search _ stack_stable validw. admit.
-    + move=> p.
-      (* TODO: lemma write_lval_validw ?? *)
-      admit.
-    move=> i hi.
-    rewrite -h6 //.
-    have /vs_unchanged := hvs'. rewrite /mem_unchanged.
-    move=> <-. done.
-    rewrite h5. apply /orP. right.
-    rewrite /between /zbetween wunsigned_add. rewrite wsize8 !zify.
-    split.
-    lia.
-    move: hi.
-    set k := Z.of_nat _. lia.
-    move: h1. rewrite /no_overflow zify.
-    move: hi.
-    set k := Z.of_nat _.
-    have := ge0_wunsigned rip. lia.
-    admit.
-    have: i < Z.of_nat (size (sp_globs (p_extra P'))). (*
-    lia.
-    move: h1. rewrite /no_overflow zify. lia.
-    valid_state
-    apply. disjoint_source extend_mem
-      
-      rewrite /mem_unchanged.
-      valid_state
+    apply: (valid_state_extend_mem hwf hvs hext hvs').
+    + by apply (write_lval_validw hw).
+    by apply (sem_i_validw_stable_sprog hs2').
   t_xrbindP => e'; apply: add_iinfoP => /(alloc_eP hwf.(wfsl_no_overflow) hwf.(wfsl_align) hpmap hvs) he [rmap2' x'].
   apply: add_iinfoP => hax /= ??; subst rmap2' i2.
   have htyv':= truncate_val_has_type htr.
   have [s2' [/= hw' hvs']]:= alloc_lvalP hwf.(wfsl_no_overflow) hwf.(wfsl_disjoint) hwf.(wfsl_align) hpmap hax hvs htyv' hw.
-  exists s2';split => //.
-  by apply: Eassgn; eauto; rewrite P'_globs; auto.
+  exists s2';split; first by apply: Eassgn; eauto; rewrite P'_globs; auto.
   split=> //.
-  admit. *)
-Admitted.
+  apply: (valid_state_extend_mem hwf hvs hext hvs').
+  + by apply (write_lval_validw hw).
+  by apply (write_lval_validw hw').
+Qed.
 
 Local Lemma Hopn : sem_Ind_opn P Pi_r.
 Proof.
   move=> s1 s2 t o xs es.
-  rewrite /sem_sopn; t_xrbindP=> vs va hes hop hw pmap rsp Slots Addr Writable Align m0 rmap1 rmap2 ii1 ii2 i2 hpmap hwf sao /=.
+  rewrite /sem_sopn; t_xrbindP=> vs va hes hop hw pmap rsp Slots Addr Writable Align rmap1 rmap2 ii1 ii2 i2 hpmap hwf sao /=.
   t_xrbindP=> -[rmap3 i'] es'; apply: add_iinfoP => he [rmap4 x'];
-    apply: add_iinfoP => ha /= [<- <-] <- _ <- s1' hvs hext hsao.
+    apply: add_iinfoP => ha /= [<- <-] <- _ <- m0 s1' hvs hext hsao.
   have [s2' [hw' hvalid']] := alloc_lvalsP hwf.(wfsl_no_overflow) hwf.(wfsl_disjoint) hwf.(wfsl_align) hpmap ha hvs (sopn_toutP hop) hw.
-  exists s2'; split=> //.
-  constructor.
-  by rewrite /sem_sopn P'_globs (alloc_esP hwf.(wfsl_no_overflow) hwf.(wfsl_align) hpmap hvs he hes) /= hop.
+  exists s2'; split; first by constructor;
+    rewrite /sem_sopn P'_globs (alloc_esP hwf.(wfsl_no_overflow) hwf.(wfsl_align) hpmap hvs he hes) /= hop.
   split=> //.
-  case: (hext) => h1 h2 h3 h4 h5 h6.
-  split=> //=.
-  + move=> p hvalid.
-    assert (h := vs_eq_mem (valid_state:=hvalid')).
-    apply h. done.
-  + 
-Admitted.
+  apply: (valid_state_extend_mem hwf hvs hext hvalid').
+  + by apply (write_lvals_validw hw).
+  by apply (write_lvals_validw hw').
+Qed.
 
 Lemma incl_var_region rmap1 rmap2 x sr :
   incl rmap1 rmap2 ->
@@ -2758,8 +2674,8 @@ Qed.
 
 Lemma valid_state_incl pmap rsp Slots Addr Writable Align rmap1 rmap2 m0 s s' :
   incl rmap1 rmap2 ->
-  valid_state pmap rsp rip Slots Addr Writable Align P rmap2 m0 s s' ->
-  valid_state pmap rsp rip Slots Addr Writable Align P rmap1 m0 s s'.
+  valid_state pmap glob_size rsp rip Slots Addr Writable Align P rmap2 m0 s s' ->
+  valid_state pmap glob_size rsp rip Slots Addr Writable Align P rmap1 m0 s s'.
 Proof.
   move=> hincl hvs.
   case:(hvs) => hvalid hdisj hvincl hunch hrip hrsp heqvm hwfr heqmem.
@@ -2914,11 +2830,11 @@ Qed.
 
 Local Lemma Hif_true : sem_Ind_if_true P ev Pc Pi_r.
 Proof.
-  move=> s1 s2 e c1 c2 Hse _ Hc pmap rsp Slots Addr Writable Align m0 rmap1 rmap2 ii1 ii2 i2 hpmap hwf sao /=.
-  t_xrbindP => -[rmap3 i'] e'; apply: add_iinfoP => he [rmap4 c1'] hc1 [rmap5 c2'] hc2 /= [??]??? s1' hv hext hsao.
+  move=> s1 s2 e c1 c2 Hse _ Hc pmap rsp Slots Addr Writable Align rmap1 rmap2 ii1 ii2 i2 hpmap hwf sao /=.
+  t_xrbindP => -[rmap3 i'] e'; apply: add_iinfoP => he [rmap4 c1'] hc1 [rmap5 c2'] hc2 /= [??]??? m0 s1' hv hext hsao.
   subst rmap3 i' rmap2 ii1 i2.
   have := alloc_eP hwf.(wfsl_no_overflow) hwf.(wfsl_align) hpmap hv he Hse; rewrite -P'_globs => he'.
-  have [s2' [Hsem [Hvalid' Hext']]] := Hc _ _ _ _ _ _ _ _ _ _ hpmap hwf _ hc1 _ hv hext hsao.
+  have [s2' [Hsem [Hvalid' Hext']]] := Hc _ _ _ _ _ _ _ _ _ hpmap hwf _ hc1 _ _ hv hext hsao.
   exists s2'; split; first by apply: Eif_true.
   split=> //.
   by apply: valid_state_incl Hvalid'; apply incl_merge_l.
@@ -2926,11 +2842,11 @@ Qed.
 
 Local Lemma Hif_false : sem_Ind_if_false P ev Pc Pi_r.
 Proof.
-  move=> s1 s2 e c1 c2 Hse _ Hc pmap rsp Slots Addr Writable Align m0 rmap1 rmap2 ii1 ii2 i2 hpmap hwf sao /=.
-  t_xrbindP => -[rmap3 i'] e'; apply: add_iinfoP => he [rmap4 c1'] hc1 [rmap5 c2'] hc2 /= [??]??? s1' hv hext hsao.
+  move=> s1 s2 e c1 c2 Hse _ Hc pmap rsp Slots Addr Writable Align rmap1 rmap2 ii1 ii2 i2 hpmap hwf sao /=.
+  t_xrbindP => -[rmap3 i'] e'; apply: add_iinfoP => he [rmap4 c1'] hc1 [rmap5 c2'] hc2 /= [??]??? m0 s1' hv hext hsao.
   subst rmap3 i' rmap2 ii1 i2.
   have := alloc_eP hwf.(wfsl_no_overflow) hwf.(wfsl_align) hpmap hv he Hse; rewrite -P'_globs => he'.
-  have [s2' [Hsem [Hvalid' Hext']]] := Hc _ _ _ _ _ _ _ _ _ _ hpmap hwf _ hc2 _ hv hext hsao.
+  have [s2' [Hsem [Hvalid' Hext']]] := Hc _ _ _ _ _ _ _ _ _ hpmap hwf _ hc2 _ _ hv hext hsao.
   exists s2'; split; first by apply: Eif_false.
   split=> //.
   by apply: valid_state_incl Hvalid'; apply incl_merge_r.
@@ -2949,28 +2865,28 @@ Qed.
 
 Local Lemma Hwhile_true : sem_Ind_while_true P ev Pc Pi_r.
 Proof.
-  move=> s1 s2 s3 s4 a c1 e c2 _ Hc1 Hv _ Hc2 _ Hwhile pmap rsp Slots Addr Writable Align m0
+  move=> s1 s2 s3 s4 a c1 e c2 hhi Hc1 Hv hhi2 Hc2 _ Hwhile pmap rsp Slots Addr Writable Align
     rmap1 rmap2 ii1 ii2 i2 hpmap hwf sao /=.
   t_xrbindP => -[rmap3 i'] [rmap4 [e' [c1' c2']]] /loop2P [rmap5 [rmap6 [hincl1 []]]].
   t_xrbindP => -[rmap7 c11] hc1 /= e1; apply: add_iinfoP => he [rmap8 c22] /= hc2 ????? hincl2 [??]???.
-  subst i2 ii1 rmap3 rmap4 i' rmap7 rmap8 e1 c11 c22 => s1' /(valid_state_incl hincl1) hv hext hsao.
-  have [s2' [hs1 [hv2 hext2]]]:= Hc1 _ _ _ _ _ _ _ _ _ _ hpmap hwf _ hc1 _ hv hext hsao.
+  subst i2 ii1 rmap3 rmap4 i' rmap7 rmap8 e1 c11 c22 => m0 s1' /(valid_state_incl hincl1) hv hext hsao.
+  have [s2' [hs1 [hv2 hext2]]]:= Hc1 _ _ _ _ _ _ _ _ _ hpmap hwf _ hc1 _ _ hv hext hsao.
   have := alloc_eP hwf.(wfsl_no_overflow) hwf.(wfsl_align) hpmap hv2 he Hv; rewrite -P'_globs => he'.
   have hsao2 := stack_stable_wf_sao (sem_stack_stable hs1) hsao.
-  have [s3' [hs2 [/(valid_state_incl hincl2) hv3 hext3]]]:= Hc2 _ _ _ _ _ _ _ _ _ _ hpmap hwf _ hc2 _ hv2 hext2 hsao2.
-  have /= := Hwhile _ _ _ _ _ _ m0 rmap5 rmap2 ii2 ii2 (Cwhile a c1' e' c2') hpmap hwf sao.
+  have [s3' [hs2 [/(valid_state_incl hincl2) hv3 hext3]]]:= Hc2 _ _ _ _ _ _ _ _ _ hpmap hwf _ hc2 _ _ hv2 hext2 hsao2.
+  have /= := Hwhile _ _ _ _ _ _ rmap5 rmap2 ii2 ii2 (Cwhile a c1' e' c2') hpmap hwf sao.
   have hsao3 := stack_stable_wf_sao (sem_stack_stable hs2) hsao2.
-  rewrite Loop.nbP /= hc1 /= he /= hc2 /= hincl2 /= => /(_ erefl _ hv3 hext3 hsao3) [s4'] [hs3 hv4].
+  rewrite Loop.nbP /= hc1 /= he /= hc2 /= hincl2 /= => /(_ erefl _ _ hv3 hext3 hsao3) [s4'] [hs3 hv4].
   by exists s4';split => //; apply: Ewhile_true; eassumption.
 Qed.
 
 Local Lemma Hwhile_false : sem_Ind_while_false P ev Pc Pi_r.
 Proof.
-  move=> s1 s2 a c1 e c2 _ Hc1 Hv pmap rsp Slots Addr Writable Align m0 rmap1 rmap2 ii1 ii2 i2 hpmap hwf sao /=.
+  move=> s1 s2 a c1 e c2 _ Hc1 Hv pmap rsp Slots Addr Writable Align rmap1 rmap2 ii1 ii2 i2 hpmap hwf sao /=.
   t_xrbindP => -[rmap3 i'] [rmap4 [e' [c1' c2']]] /loop2P [rmap5 [rmap6 [hincl1 []]]].
   t_xrbindP => -[rmap7 c11] hc1 /= e1; apply: add_iinfoP => he [rmap8 c22] /= hc2 ????? hincl2 [??]???.
-  subst i2 ii1 rmap3 rmap4 i' rmap7 rmap8 e1 c11 c22 => s1' /(valid_state_incl hincl1) hv hext hsao.
-  have [s2' [hs1 [hv2 hext2]]]:= Hc1 _ _ _ _ _ _ _ _ _ _ hpmap hwf _ hc1 _ hv hext hsao.
+  subst i2 ii1 rmap3 rmap4 i' rmap7 rmap8 e1 c11 c22 => m0 s1' /(valid_state_incl hincl1) hv hext hsao.
+  have [s2' [hs1 [hv2 hext2]]]:= Hc1 _ _ _ _ _ _ _ _ _ hpmap hwf _ hc1 _ _ hv hext hsao.
   have := alloc_eP hwf.(wfsl_no_overflow) hwf.(wfsl_align) hpmap hv2 he Hv; rewrite -P'_globs => he'.
   by exists s2';split => //; apply: Ewhile_false; eassumption.
 Qed.
@@ -3342,10 +3258,21 @@ Proof.
     have := halloc2.(ass_above_limit).
     assert (HH := wunsigned_range (top_stack m1')).
     lia.
-  have h3: disjoint_zrange rip glob_size (top_stack m2') (sao_size (local_alloc fn)).
-  + (* faux si glob_size et sao_size égaux à 0 tous deux ! *)
-    (* sinon utiliser disjoint_zrange_U8 *)
-    admit.
+  have h3: 0 < glob_size -> 0 < (local_alloc fn).(sao_size) ->
+    disjoint_zrange rip glob_size (top_stack m2') (sao_size (local_alloc fn)).
+  + move=> hlt1 hlt2.
+    apply disjoint_zrange_sym.
+    apply disjoint_zrange_U8 => //.
+    move=> k hk.
+    have hb: between rip glob_size (rip + wrepr _ k)%R U8.
+    + apply: between_byte hk => //.
+      by apply zbetween_refl.
+    have: validw m1' (rip + wrepr _ k)%R U8.
+    + rewrite hext.(em_valid). by rewrite hb orbT.
+    move=> /halloc2.(ass_fresh) hfresh.
+    apply disjoint_zrange_sym.
+    split=> //.
+    by apply: (no_overflow_incl hb).
 
 (*
   set Addr_params :=
@@ -3375,7 +3302,7 @@ Proof.
   move=> [s3 hstate].
 
   (* TODO: Hwf_Slots peut-être inutile *)
-  have := test hlayout hext.(em_no_overflow) h2 h3 hext.(em_align)
+  have := test hlayout h2 h3 hext.(em_align)
     halloc2.(ass_align_stk)
     _ _ _ _ hlocal_map hparams _ hext refl_equal refl_equal _ _ _ _ hstate.
   move=> /(_ _ _ hin' _ refl_equal refl_equal).
@@ -3416,11 +3343,11 @@ Proof.
   + admit.
   move=> /(_ H0) hvs.
   rewrite /Pc in Hc.
-  have := init_params_wf_pmap hlayout _ _ _ _ _ hlocal_map hparams.
-  move=> /(_ _ _ _ refl_equal refl_equal) => hpmap.
+  have := init_params_wf_pmap hlayout _ _ _ _ hlocal_map hparams.
+  move=> /(_ _ _ refl_equal refl_equal) => hpmap.
   (* pk dépend-on de Hrin ?? *)
-  have hslots := Hwf_Slots hlayout hext.(em_no_overflow) h2 h3 hext.(em_align)
-    halloc2.(ass_align_stk) (s2 := {| emem := m1'; evm := vmap0 |}) hin' H0 hparams H.
+  have hslots := Hwf_Slots hlayout h2 h3 hext.(em_align)
+    halloc2.(ass_align_stk) (s2 := {| emem := m1'; evm := vmap0 |}) hin' H0. hparams H.
     have hin'': Rin m2' fn vargs1 vargs1'.
     + (* TODO: mettre en hyp de section
          Rin m vargs1 vargs2
@@ -4258,6 +4185,11 @@ Qed.
 
    Rout peut-être qu'on a besoin de prendre va' en argument pour dire que vr' = va'
    (en tout cas même région) dans le cas reg ptr
+
+   mais on a plus accès à reg ptr ou pas (sao.(sao_params)), en tout cas, il me semble
+   peut-être utiliser le ty_in de fn dans P et SP :
+   - si =, va = va',
+   - si <>, va' = Vword p...
 *)
 Lemma alloc_progP nrip data oracle_g oracle (P: uprog) (SP: sprog) fn:
   alloc_prog nrip data oracle_g oracle P = ok SP ->

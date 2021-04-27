@@ -80,8 +80,8 @@ Hypothesis disjoint_writable : forall s1 s2,
 Hypothesis slot_align :
   forall s, Sv.In s Slots -> is_align (Addr s) (Align s).
 
-Hypothesis writable_not_glob : forall s, Sv.In s Slots ->
-  Writable s -> disjoint_zrange rip glob_size (Addr s) (size_slot s).
+Hypothesis writable_not_glob : forall s, Sv.In s Slots -> Writable s ->
+  0 < glob_size -> disjoint_zrange rip glob_size (Addr s) (size_slot s).
 
 (* All pointers valid in memory [m0] are valid in memory [m].
    It is supposed to be applied with [m0] the initial target memory
@@ -4057,68 +4057,6 @@ Proof.
   rewrite /= hget2 /= hgets2 /=.
   eexists; split; first by reflexivity.
   by constructor.
-Qed.
-
-Record extend_mem (m1 m2:mem) (rip:ptr) (data:seq u8) := {
-  em_no_overflow : no_overflow rip (Z.of_nat (size data));
-  em_align       : is_align rip U256;
-  em_read_old8   : forall p, validw m1 p U8 -> read m1 p U8 = read m2 p U8;
-  em_fresh       : forall p, validw m1 p U8 -> disjoint_zrange rip (Z.of_nat (size data)) p (wsize_size U8);
-  em_valid       : forall p, validw m2 p U8 = validw m1 p U8 || between rip (Z.of_nat (size data)) p U8;
-  em_read_new    : forall i, 0 <= i < Z.of_nat (size data) ->
-                     read m2 (rip + wrepr _ i)%R U8 = ok (nth 0%R data (Z.to_nat i)) }.
-
-Lemma zbetween_not_disjoint_zrange p1 s1 p2 s2 :
-  zbetween p1 s1 p2 s2 ->
-  0 < s2 ->
-  ~ disjoint_zrange p1 s1 p2 s2.
-Proof. by rewrite /zbetween !zify => hb hlt [_ _ ?]; lia. Qed.
-
-(* I put this lemma here so that the axiom [writable_not_glob] is used.
-   But maybe it is better that [extend_mem] be defined only in the other file.
-   In this case, we can remove [writable_not_glob] here and rely on the field
-   of [wf_Slots] in the other file.
-*)
-Lemma valid_state_extend_mem rmap m0 s1 s2 glob_data :
-  valid_state rmap m0 s1 s2 ->
-  extend_mem (emem s1) (emem s2) rip glob_data ->
-  Z.of_nat (size glob_data) <= glob_size ->
-  forall s1' s2',
-  valid_state rmap m0 s1' s2' ->
-  validw (emem s1) =2 validw (emem s1') ->
-  validw (emem s2) =2 validw (emem s2') ->
-  extend_mem (emem s1') (emem s2') rip glob_data.
-Proof.
-  move=> hvs hext hle s1' s2' hvs' hvalid1 hvalid2.
-  case:(hext) => hover halign hold hfresh hvalid hnew.
-  split=> //=.
-  + by apply vs_eq_mem.
-  + move=> p hvalidp.
-    apply hfresh.
-    by rewrite hvalid1.
-  + move=> p.
-    by rewrite -hvalid1 -hvalid2.
-  move=> i hi.
-  have hb: between rip (Z.of_nat (size (glob_data))) (rip + wrepr _ i)%R U8.
-  + apply: between_byte hi => //.
-    by apply zbetween_refl.
-  have hb': between rip glob_size (rip + wrepr _ i)%R U8.
-  + apply: zbetween_trans hb.
-    by rewrite /zbetween !zify; lia.
-  have hvalid0: validw m0 (rip + wrepr _ i)%R U8.
-  + by apply vs_glob_valid.
-  have hnvalid1: ~ validw (emem s1) (rip + wrepr _ i)%R U8.
-  + move=> /hfresh.
-    by apply zbetween_not_disjoint_zrange.
-  have hdisjoint: forall s, Sv.In s Slots -> Writable s ->
-    disjoint_zrange (Addr s) (size_slot s) (rip + wrepr U64 i) (wsize_size U8).
-  + move=> s hin hw.
-    apply disjoint_zrange_sym.
-    apply (disjoint_zrange_incl_l hb').
-    by apply writable_not_glob.
-  rewrite -vs_unchanged //; last by rewrite -hvalid1.
-  rewrite (vs_unchanged (valid_state:=hvs)) //.
-  by apply hnew.
 Qed.
 
 End Section.
