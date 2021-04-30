@@ -44,6 +44,16 @@ Import Region.
 
 (* --------------------------------------------------------------------------- *)
 
+(* Size of a value. *)
+Notation size_val v := (size_of (type_of_val v)).
+
+(* TODO : move elsewhere *)
+(* but not clear where
+   Uptr is defined in memory_model, no stype there
+   stype is defined in type, no Uptr there
+*)
+Notation sptr := (sword Uptr) (only parsing).
+
 Section Section.
 
 (* TODO: remove stk_size *)
@@ -153,13 +163,6 @@ Record wf_direct (x : var) (s : slot) ofs ws z sc := {
   wfd_align : Align s = ws;
   wfd_offset : Addr s = (wbase_ptr sc + wrepr Uptr ofs)%R
 }.
-
-(* TODO : move elsewhere *)
-(* but not clear where
-   Uptr is defined in memory_model, no stype there
-   stype is defined in type, no Uptr there
-*)
-Notation sptr := (sword Uptr) (only parsing).
 
 Record wf_regptr x xr := {
   wfr_type : is_sarr (vtype x);
@@ -294,9 +297,6 @@ Definition eq_sub_region_array (m2:mem) sr bytes s v :=
   | Varr _ a => WArray.get AAscale U8 a off
   | _ => type_error
   end. *)
-
-(* Size of a value. *)
-Notation size_val v := (size_of (type_of_val v)).
 
 (* TODO: should we raise another error in the Vword case ? *)
 (* This allows to read uniformly in words and arrays. *)
@@ -3724,7 +3724,7 @@ Inductive Forall3 (A B C : Type) (R : A → B -> C -> Prop) : seq A → seq B �
 
 (* Rin: link between the values given as arguments in the source and the target. *)
 (* TODO: exists p or exists sr, ... (sub_region_addr sr) ? *)
-Definition Rin_aux m sao_param va va' :=
+Definition Rin_aux m1 m2 sao_param va va' :=
   match sao_param with
   | None => va' = va
   | Some pi =>
@@ -3732,18 +3732,21 @@ Definition Rin_aux m sao_param va va' :=
       va' = Vword p,
       is_align p pi.(pp_align),
       no_overflow p (size_val va),
-      forall w, between p (size_val va) w U8 -> validw m w U8 &
-      forall off w, get_val_byte va off = ok w -> read m (p + wrepr _ off)%R U8 = ok w]
+      forall w, between p (size_val va) w U8 -> validw m2 w U8 &
+      (forall w, validw m1 w U8 -> disjoint_zrange p (size_val va) w (wsize_size U8)) /\
+      forall off w, get_val_byte va off = ok w -> read m2 (p + wrepr _ off)%R U8 = ok w]
   end.
 
 Definition disjoint_values (sao_params:seq (option param_info)) va va' :=
-  forall i1 i2 pi1 pi2 w1 w2,
+  forall i1 pi1 v1 w1 i2 pi2 v2 w2,
     nth None sao_params i1 = Some pi1 ->
-    nth None sao_params i2 = Some pi2 ->
+    nth (Vbool true) va i1 = v1 ->
     nth (Vbool true) va' i1 = @Vword Uptr w1 ->
+    nth None sao_params i2 = Some pi2 ->
+    nth (Vbool true) va i2 = v2 ->
     nth (Vbool true) va' i2 = @Vword Uptr w2 ->
     i1 <> i2 -> pi1.(pp_writable) ->
-    disjoint_zrange w1 (size_val (nth (Vbool true) va i1)) w2 (size_val (nth (Vbool true) va i2)).
+    disjoint_zrange w1 (size_val v1) w2 (size_val v2).
 
 (* Rout: link between the values returned by the function in the source and the target. *)
 Definition Rout_aux m (i : option nat) vr vr' :=
@@ -3763,7 +3766,7 @@ Lemma alloc_call_argP m0 rmap s1 s2 sao_param e v osr e' :
   sem_pexpr gd s1 e = ok v ->
   exists v',
     sem_pexpr [::] s2 e' = ok v' /\
-    Rin_aux (emem s2) sao_param v v'.
+    Rin_aux (emem s1) (emem s2) sao_param v v'.
 Proof.
   move=> hvs.
   rewrite /alloc_call_arg.
@@ -3779,7 +3782,7 @@ Proof.
   + case hlx: get_local => [pk|//].
     case: pk hlx => // p hlx.
     t_xrbindP=> -[sr _] /check_validP [bytes [hgvalid -> hmem]] ? hwritable.
-    assert (hwf := check_gvalid_wf wfr_wf hgvalid).
+    assert (hwf := check_gvalid_wf wfr_wf hgvalid); move=> /= in hwf.
     move=> _ /(check_alignP hwf) halign _ <- /= hget.
     have /wfr_gptr := hgvalid.
     rewrite /get_var_kind /= hlx => -[_ [[<-] /=]].
@@ -3795,6 +3798,13 @@ Proof.
       apply (zbetween_trans (zbetween_sub_region_addr hwf)).
       have /= := size_of_le (type_of_get_gvar hget).
       by move: hb; rewrite /between /zbetween !zify; lia.
+    split.
+    + move=> w hvalid.
+      apply (@disjoint_zrange_incl_l (sub_region_addr sr) (size_slot x)).
+      + have /= := size_of_le (type_of_get_gvar hget).
+        by rewrite /zbetween !zify; lia.
+      apply (disjoint_zrange_incl_l (zbetween_sub_region_addr hwf)).
+      by apply (vs_disjoint hwf.(wfr_slot) hvalid).
     move=> off w /dup[] /get_val_byte_bound hbound.
     assert (hval := wfr_val hgvalid hget).
     case: hval => hread hty.
@@ -3826,7 +3836,7 @@ Lemma alloc_call_argsP m0 rmap s1 s2 sao_params args vargs l :
   sem_pexprs gd s1 args = ok vargs ->
   exists vargs',
     sem_pexprs [::] s2 (map snd l) = ok vargs' /\
-    Forall3 (Rin_aux (emem s2)) sao_params vargs vargs'.
+    Forall3 (Rin_aux (emem s1) (emem s2)) sao_params vargs vargs'.
 (*     Forall (fun '(osr, _) => match osr with ..) *)
 Proof.
   move=> hvs.
