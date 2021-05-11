@@ -1033,6 +1033,7 @@ Definition alloc_lval_call (srs:seq (option (bool * sub_region) * pexpr)) rmap (
       Let x := get_Lvar r in
       Let p := get_regptr x in
       Let rmap := Region.set_arr_call rmap (v_var x) sr in
+      (* TODO: Lvar p or Lvar (with_var x p) like in alloc_call_arg? *)
       ok (rmap, Lvar p)
     | (None, _) => cerror "alloc_r_call : please report"
     end
@@ -1047,19 +1048,22 @@ Definition is_RAnone ral :=
 Definition alloc_call (sao_caller:stk_alloc_oracle_t) rmap ini rs fn es := 
   let sao_callee := local_alloc fn in
   Let es  := alloc_call_args rmap sao_callee.(sao_params) es in
-  Let rs  := alloc_call_res  rmap es sao_callee.(sao_return) rs in
-  Let _   := assert_check (negb (is_RAnone sao_callee.(sao_return_address)))
+  Let rs  := alloc_call_res  rmap es sao_callee.(sao_return) rs in (*
+  Let _   := assert_check (~~ is_RAnone sao_callee.(sao_return_address))
                (Cerr_stk_alloc "cannot call export function, please report")
-  in
+  in *)
   Let _   :=
     let local_size :=
-      round_ws sao_caller.(sao_align) (sao_caller.(sao_size) + sao_caller.(sao_extra_size))%Z
+      if is_RAnone sao_caller.(sao_return_address) then
+        (sao_caller.(sao_size) + sao_caller.(sao_extra_size) + wsize_size sao_caller.(sao_align) - 1)%Z
+      else
+        (round_ws sao_caller.(sao_align) (sao_caller.(sao_size) + sao_caller.(sao_extra_size)))%Z
     in
     assert_check (local_size + sao_callee.(sao_max_size) <=? sao_caller.(sao_max_size))%Z
                  (Cerr_stk_alloc "error in max size computation, please report")
   in
   Let _   := assert_check (sao_callee.(sao_align) <= sao_caller.(sao_align))%CMP
-               (Cerr_stk_alloc "non aligned function call, please report")
+                          (Cerr_stk_alloc "non aligned function call, please report")
   in
   let es  := map snd es in
   ok (rs.1, Ccall ini rs.2 fn es).
@@ -1223,10 +1227,10 @@ Definition check_result pmap rmap params oi (x:var_i) :=
   match oi with
   | Some i =>
     match nth None params i with
-    | Some r => 
+    | Some sr =>
       Let srs := check_valid rmap x (Some 0%Z) (size_slot x) in
-      let sr := srs.1 in
-      Let _  := assert (r == sr.(sr_region)) (Cerr_stk_alloc "invalid reg ptr in result") in
+      let sr' := srs.1 in
+      Let _  := assert (sr == sr') (Cerr_stk_alloc "invalid reg ptr in result") in
       Let p  := get_regptr pmap x in
       ok p
     | None => cerror "invalid function info:please report"
@@ -1240,6 +1244,11 @@ Definition check_result pmap rmap params oi (x:var_i) :=
 Definition check_results pmap rmap params oi res := 
   mapM2 (Cerr_stk_alloc "invalid function info:please report")
         (check_result pmap rmap params) oi res.
+
+(* TODO: remove set_full ? *)
+Definition sub_region_full x r :=
+  let z := {| z_ofs := 0; z_len := size_slot x |} in
+  {| sr_region := r; sr_zone := z |}.
 
 (* is duplicate region the best error msg ? *)
 Definition init_param (mglob stack : Mvar.t (Z * wsize)) accu pi (x:var_i) := 
@@ -1260,10 +1269,11 @@ Definition init_param (mglob stack : Mvar.t (Z * wsize)) accu pi (x:var_i) :=
     let r :=
       {| r_slot := x;
          r_align := pi.(pp_align); r_writable := pi.(pp_writable) |} in
+    let sr := sub_region_full x r in
     ok (Sv.add pi.(pp_ptr) disj,
         Mvar.set lmap x (Pregptr pi.(pp_ptr)),
-        Region.set_full rmap x r,
-        (Some r, with_var x pi.(pp_ptr)))
+        set_move rmap x sr,
+        (Some sr, with_var x pi.(pp_ptr)))
   end.
 
 Definition init_params mglob stack disj lmap rmap sao_params params :=
