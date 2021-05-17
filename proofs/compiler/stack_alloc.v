@@ -1223,11 +1223,14 @@ Definition init_local_map vrip vrsp fn globals stack sao :=
 *)
 
 (* TODO: srs.1 or srs.2 -> I think both are correct *)
-Definition check_result pmap rmap params oi (x:var_i) := 
+(* TODO: vtype == vtype could by size_slot == size_slot *)
+Definition check_result pmap rmap paramsi params oi (x:var_i) :=
   match oi with
   | Some i =>
-    match nth None params i with
+    match nth None paramsi i with
     | Some sr =>
+      Let _ := assert (x.(vtype) == (nth x params i).(vtype))
+                      (Cerr_stk_alloc "reg ptr in result not corresponding to a parameter, please report") in
       Let srs := check_valid rmap x (Some 0%Z) (size_slot x) in
       let sr' := srs.1 in
       Let _  := assert (sr == sr') (Cerr_stk_alloc "invalid reg ptr in result") in
@@ -1241,9 +1244,9 @@ Definition check_result pmap rmap params oi (x:var_i) :=
     ok x
   end.
 
-Definition check_results pmap rmap params oi res := 
+Definition check_results pmap rmap paramsi params oi res := 
   mapM2 (Cerr_stk_alloc "invalid function info:please report")
-        (check_result pmap rmap params) oi res.
+        (check_result pmap rmap paramsi params) oi res.
 
 (* TODO: remove set_full ? *)
 Definition sub_region_full x r :=
@@ -1316,7 +1319,7 @@ Definition alloc_fd_aux p_extra mglob (local_alloc: funname -> stk_alloc_oracle_
   Let rbody := add_finfo fn fn (fmapM (alloc_i pmap local_alloc sao) rmap fd.(f_body)) in
   let: (rmap, body) := rbody in
   Let res := 
-      add_err_fun fn (check_results pmap rmap paramsi sao.(sao_return) fd.(f_res)) in
+      add_err_fun fn (check_results pmap rmap paramsi fd.(f_params) sao.(sao_return) fd.(f_res)) in
   ok {|
     f_iinfo := f_iinfo fd;
     f_tyin := map2 (fun o ty => if o is Some _ then sword Uptr else ty) sao.(sao_params) fd.(f_tyin); 
