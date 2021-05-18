@@ -4081,16 +4081,13 @@ Lemma alloc_call_resP rmap m0 s1 s2 srs ret_pos rs rmap2 rs2 (v:values) s1' :
 Proof.
 Admitted.
 
-Lemma Forall2_nth A B (R : A -> B -> Prop) l1 l2 :
-  List.Forall2 R l1 l2 ->
-  forall a0 a b0 b i, (i < size l1)%nat ->
-    nth a0 l1 i = a ->
-    nth b0 l2 i = b ->
-    R a b.
+Lemma Forall2_nth A B (R : A -> B -> Prop) la lb :
+  List.Forall2 R la lb ->
+  forall a b i, (i < size la)%nat ->
+  R (nth a la i) (nth b lb i).
 Proof.
-  elim {l1 l2} => // x1 x2 l1 l2 hr _ ih a0 a b0 b i.
-  case: i => [_|i].
-  + by move=> /= <- <-.
+  elim {la lb} => // a b la lb hr _ ih a0 b0 i.
+  case: i => [//|i].
   by apply ih.
 Qed.
 
@@ -4104,20 +4101,14 @@ Proof.
   by rewrite nth_default in hnth.
 Qed.
 
-(* We could instead not use [nth a0 l1 i = a] and replace [a] with [nth a0 l1 i]
-   everywhere. Same for Forall2_nth. *)
-Lemma Forall3_nth A B C (R : A -> B -> C -> Prop) l1 l2 l3 :
-  Forall3 R l1 l2 l3 ->
-  forall a0 a b0 b c0 c i,
-  (i < size l1)%nat ->
-  nth a0 l1 i = a ->
-  nth b0 l2 i = b ->
-  nth c0 l3 i = c ->
-  R a b c.
+Lemma Forall3_nth A B C (R : A -> B -> C -> Prop) la lb lc :
+  Forall3 R la lb lc ->
+  forall a b c i,
+  (i < size la)%nat ->
+  R (nth a la i) (nth b lb i) (nth c lc i).
 Proof.
-  elim {l1 l2 l3} => // x1 x2 x3 l1 l2 l3 hr _ ih a0 a b0 b c0 c i.
-  case: i => [_|i].
-  + by move=> /= <- <- <-.
+  elim {la lb lc} => // a b c la lb lc hr _ ih a0 b0 c0 i.
+  case: i => [//|i].
   by apply ih.
 Qed.
 
@@ -4148,14 +4139,11 @@ Proof.
     rewrite /get_var_kind /= /get_local hlres1 => -[_ [[<-] /= ->]].
     eexists; split; first by reflexivity.
     eexists; split; first by reflexivity.
-    + apply: (Forall2_nth haddr _ heq) => //.
-      by apply (nth_not_default heq).
+    + by apply (Forall2_nth haddr None (Vbool true) (nth_not_default heq ltac:(discriminate))).
     + apply (Z.le_trans _ _ _ (size_of_le (type_of_get_var hget))).
       rewrite heqty.
-      have := (Forall3_nth hsize _ heq refl_equal refl_equal).
-      apply.
-      by apply (nth_not_default heq).
-      done.
+      apply: (Forall3_nth hsize None res1 (Vbool true) (nth_not_default heq ltac:(discriminate))).
+      by apply heq.
     assert (hval := wfr_val hgvalid hget).
     case: hval => hread hty.
     move=> off w /dup[] /get_val_byte_bound; rewrite hty => hoff.
