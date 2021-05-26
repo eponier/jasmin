@@ -4181,4 +4181,18 @@ Proof.
   by constructor.
 Qed.
 
+Lemma check_results_alloc_params_not_None rmap srs params sao_returns res1 res2 :
+  check_results pmap rmap srs params sao_returns res1 = ok res2 ->
+  List.Forall (fun oi => forall i, oi = Some i -> nth None srs i <> None) sao_returns.
+Proof.
+  rewrite /check_results.
+  elim: sao_returns res1 res2 => //.
+  move=> oi sao_returns ih [//|x1 res1] /=.
+  t_xrbindP => _ x2 hresult res2 /ih{ih}ih _.
+  constructor=> //.
+  move=> i ?; subst oi.
+  move: hresult => /=.
+  by case: nth.
+Qed.
+
 End Section.
