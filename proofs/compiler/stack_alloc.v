@@ -1062,6 +1062,10 @@ Definition alloc_call (sao_caller:stk_alloc_oracle_t) rmap ini rs fn es :=
     assert_check (local_size + sao_callee.(sao_max_size) <=? sao_caller.(sao_max_size))%Z
                  (Cerr_stk_alloc "error in max size computation, please report")
   in
+  (* TODO: is this check really necessary? *)
+  Let _   := assert_check (0 <=? sao_callee.(sao_max_size))%Z
+                          (Cerr_stk_alloc "error in max size computation, please report")
+  in
   Let _   := assert_check (sao_callee.(sao_align) <= sao_caller.(sao_align))%CMP
                           (Cerr_stk_alloc "non aligned function call, please report")
   in
