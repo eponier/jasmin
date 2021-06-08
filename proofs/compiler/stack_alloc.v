@@ -1063,6 +1063,7 @@ Definition alloc_call (sao_caller:stk_alloc_oracle_t) rmap ini rs fn es :=
                  (Cerr_stk_alloc "error in max size computation, please report")
   in
   (* TODO: is this check really necessary? *)
+  (* TODO: move -> We check that for each call, while we could check that only for each function. *)
   Let _   := assert_check (0 <=? sao_callee.(sao_max_size))%Z
                           (Cerr_stk_alloc "error in max size computation, please report")
   in

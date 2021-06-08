@@ -2442,9 +2442,9 @@ Qed.
    But it is a bit painful, since in some proofs, we have [var] and not [var_i].
    We use [1%positive] as a dummy [v_info] to forge a [var_i].
 *)
-Definition disjoint_from_writable_param p opi (x:var_i) v2 :=
+Definition disjoint_from_writable_param p opi varg1 v2 :=
   forall pi p2, opi = Some pi -> v2 = @Vword Uptr p2 -> pi.(pp_writable) ->
-  disjoint_zrange p2 (size_slot x) p (wsize_size U8).
+  disjoint_zrange p2 (size_val varg1) p (wsize_size U8).
 
 (* TODO: move *)
 Lemma size_fmapM2 eT aT bT cT dT e (f : aT -> bT -> cT -> result eT (aT * dT)) a lb lc a2 ld :
@@ -2462,7 +2462,7 @@ Qed.
    disjoint from writable param slots
 *)
 Lemma disjoint_from_writable_params_param_slots p :
-  Forall3 (disjoint_from_writable_param p) sao.(sao_params) params vargs2 ->
+  Forall3 (disjoint_from_writable_param p) sao.(sao_params) vargs1 vargs2 ->
   forall s, Sv.In s Slots_params -> Writable_params s ->
   disjoint_zrange (Addr_params s) (size_slot s) p (wsize_size U8).
 Proof.
@@ -2473,16 +2473,20 @@ Proof.
   rewrite /Writable_params /Addr_params hpi => hw.
   have [i [hnth1 hnth2 hnth3 hnth4]] := get_pi_nth hpi.
   have hi := nth_not_default hnth2 ltac:(discriminate).
-  have := Forall3_nth hdisj None {| v_var := vrip0; v_info := 1%positive |} (Vbool true) hi.
+  have := Forall3_nth hdisj None (Vbool true) (Vbool true) hi.
   move: hi; have [-> _] := size_fmapM2 hparams => hi.
-  by rewrite hnth2 hnth4 => /(_ _ _ refl_equal refl_equal hw); rewrite -(nth_map _ vrip0 v_var) // hnth1.
+  rewrite hnth2 hnth4 => /(_ _ _ refl_equal refl_equal hw).
+  apply disjoint_zrange_incl_l.
+  apply: zbetween_le.
+  rewrite hnth3.
+  by apply: get_pi_size_le hpi.
 Qed.
 
 (* If p is [disjoint_from_writable_params] and from local variables, it is
    disjoint from all writable params.
 *)
 Corollary disjoint_from_writable_params_all_slots p :
-  Forall3 (disjoint_from_writable_param p) sao.(sao_params) params vargs2 ->
+  Forall3 (disjoint_from_writable_param p) sao.(sao_params) vargs1 vargs2 ->
   disjoint_zrange rsp sao.(sao_size) p (wsize_size U8) ->
   forall s, Sv.In s Slots -> Writable s ->
   disjoint_zrange (Addr s) (size_slot s) p (wsize_size U8).
@@ -2748,9 +2752,8 @@ Definition disjoint_from_writable_param p opi (x:var_i) v2 :=
 Definition disjoint_from_writable_params fn p :=
   Forall3 (disjoint_from_writable_param p) (local_alloc fn).(sao_params).
 (* TODO: clean *)
-Definition mem_unchanged_params fn ms m0 m vargs2 :=
-  forall fd, get_fundef P.(p_funcs) fn = Some fd ->
-  forall p, validw m0 p U8 -> ~ validw ms p U8 -> disjoint_from_writable_params fn p fd.(f_params) vargs2 ->
+Definition mem_unchanged_params fn ms m0 m vargs1 vargs2 :=
+  forall p, validw m0 p U8 -> ~ validw ms p U8 -> disjoint_from_writable_params fn p vargs1 vargs2 ->
   read m0 p U8 = read m p U8.
 
 Let Pfun (m1: mem) (fn: funname) (vargs: seq value) (m2: mem) (vres: seq value) :=
@@ -2763,7 +2766,7 @@ Let Pfun (m1: mem) (fn: funname) (vargs: seq value) (m2: mem) (vres: seq value) 
       sem_call (sCP := sCP_stack) P' rip m1' fn vargs' m2' vres' /\
       extend_mem m2 m2' rip global_data /\
       wf_results m2' vargs vargs' fn vres vres' /\
-      mem_unchanged_params fn m1 m1' m2' vargs'.
+      mem_unchanged_params fn m1 m1' m2' vargs vargs'.
 
 Local Lemma Hskip : sem_Ind_nil Pc.
 Proof.
@@ -3169,7 +3172,11 @@ Proof.
     have /vs_top_stack -> := hvs.
     by apply is_align_m.
   have [m2 [vres2 [hsem2 [hext' [hresults hunch]]]]] := Hf _ _ hext hargs hdisj halloc_ok.
+  
+  sem_call
+  wf_result_pointer
 
+  (* maybe make this proof in stack_alloc_proof.v ? *)
   have hvs': valid_state pmap glob_size rsp rip Slots Addr Writable Align P rmap1 m0 (with_mem s1 m1) (with_mem s2 m2).
   + case:(hvs) => hvalid hdisj_ hincl hunch_ hrip hrsp heqvm hwfr heqmem hglobv htop.
     split=> //=.
@@ -3181,13 +3188,13 @@ Proof.
       apply hincl.
     + move=> p hvalid1 hvalid2 hdisj__.
       rewrite hunch_ //. 2: rewrite (sem_call_validw_stable_uprog hsem1) //.
-      apply (hunch _ hfd1).
+      apply hunch.
       + rewrite (sem_call_validw_stable_sprog hsem2). admit.
       + rewrite (sem_call_validw_stable_uprog hsem1). done.
       rewrite /disjoint_from_writable_params.
       
       (* TODO: better default value ? *)
-      apply (nth_Forall3 (a:=None) (b:= {| v_var := pmap.(vrip); v_info := 1%positive |}) (c:=Vbool true)).
+      apply (nth_Forall3 (a:=None) (b:=Vbool true) (c:=Vbool true)).
       admit.
       admit.
       move=> i hi pi p2 hpi hp2 hw.
@@ -3202,8 +3209,17 @@ Proof.
       move=> /(_ _ _ hsr) [hword hwf'].
       rewrite hp2 in hword.
       move: hword => [?]; subst p2.
+      apply (disjoint_zrange_incl_l (zbetween_sub_region_addr hwf.(wfsl_no_overflow) hwf')).
+      apply hdisj__.
+      apply hwf'.(wfr_slot).
+      rewrite hwf'.(wfr_writable).
+      rewrite hw in hsr.
+      have /List.Forall_forall := (alloc_call_args_writable hcargs).
+      have /InP hin1 := mem_nth None (nth_not_default hsr ltac:(discriminate)).
+      move=> /(_ _ hin1 _ hsr). done.
+      (* j'ai encore une fois l'impression d'avoir fait cette preuve plein de fois *)
       
-      
+      (*
       have hsize_le: size_slot (nth {| v_var := vrip pmap; v_info := 1%positive |} (f_params fd1) i)
         <= size_val (nth (Vbool true) vargs1 i).
       + (* or make a proof on sem_call -> size_of <= size_of *)
@@ -3224,13 +3240,13 @@ Proof.
       have /List.Forall_forall := (alloc_call_args_writable hcargs).
       have /InP hin1 := mem_nth None (nth_not_default hsr ltac:(discriminate)).
       move=> /(_ _ hin1 _ hsr). done.
-
-    + case: (hwfr) => hwfsr hval hptr; split=> //.
+*)
+    + case: (hwfr) => hwfsr hval hptr; split=> //. (*
       + move=> x sr bytes v hgvalid /= hget.
         have [hread hty] := hval _ _ _ _ hgvalid hget.
         split=> //.
         move=> off hmem w /dup[] /get_val_byte_bound hoff ?.
-        rewrite -(hunch _ hfd1). (* we could specialize it to hfd1 once and for all *)
+        rewrite -hunch. (* we could specialize it to hfd1 once and for all *)
         + apply hread => //.
         + rewrite /slot_valid in hvalid.
           have hwf' := check_gvalid_wf hpmap hwfsr hgvalid.
@@ -3246,7 +3262,55 @@ Proof.
           apply (no_overflow_sub_region_addr hwf.(wfsl_no_overflow) hwf').
           rewrite hty.
           apply: zbetween_refl.
+        + rewrite /slot_valid in hvalid.
+          rewrite /disjoint_source in hdisj_.
+          have hwf' := check_gvalid_wf hpmap hwfsr hgvalid.
+          move=> /hdisj_ -/(_ _ hwf'.(wfr_slot)).
+          apply zbetween_not_disjoint_zrange => //.
+          apply: between_byte hoff.
+          + rewrite hty.
+            by apply (no_overflow_sub_region_addr hwf.(wfsl_no_overflow) hwf').
+          rewrite hty.
+          by apply: (zbetween_sub_region_addr hwf.(wfsl_no_overflow) hwf').
+        apply: (nth_Forall3 (a:=None) (b:=Vbool true) (c:=Vbool true)).
         + admit.
+        + admit.
+        move=> i hi pi p2 hpi hp2 hw.
+        have := Forall3_nth haddr None (Vbool true) (Vbool true).
+        have [-> _] := Forall3_size haddr.
+      have [<- _] := Forall3_size hargs.
+      move=> /(_ _ hi).
+      have [sr' hsr'] := Forall2_nth (alloc_call_args_not_None hcargs) None None hi _ hpi.
+      move=> /(_ _ _ hsr') [hword hwf'].
+      rewrite hp2 in hword.
+      move: hword => [?]; subst p2.
+      apply (disjoint_zrange_incl_l (zbetween_sub_region_addr hwf.(wfsl_no_overflow) hwf')).
+      have hwf'' := check_gvalid_wf hpmap hwfsr hgvalid.
+      apply: (disjoint_zrange_incl_r (between_byte _ _ hoff)).
+      + rewrite hty.
+        by apply (no_overflow_sub_region_addr hwf.(wfsl_no_overflow) hwf'').
+      rewrite hty.
+      apply: (zbetween_sub_region_addr hwf.(wfsl_no_overflow) hwf'').
+      apply hwf.(wfsl_disjoint).
+      apply hwf'.(wfr_slot).
+      apply hwf''.(wfr_slot).
+      
+      rewrite /disjoint_source in hdisj_.
+      apply hdisj_.
+      
+      apply hwf.(wfsl_disjoint).
+      apply hwf'.(wfr_slot).
+      
+      apply hdisj__.
+      apply hwf'.(wfr_slot).
+      rewrite hwf'.(wfr_writable).
+      rewrite hw in hsr.
+      have /List.Forall_forall := (alloc_call_args_writable hcargs).
+      have /InP hin1 := mem_nth None (nth_not_default hsr ltac:(discriminate)).
+      move=> /(_ _ hin1 _ hsr). done.
+      (* j'ai encore une fois l'impression d'avoir fait cette preuve plein de fois *)
+        have := 
+        
         apply: (nth_Forall3 (a:=None)).
         
         rewrite /eq_sub_region_val_read in hread.
@@ -3351,15 +3415,18 @@ Proof.
       simpl. move=> _ [<-].
       move=> hrinn. *)
       (* implied by h3 *) admit.
-    + case: (hwfr) => hwfsr hval hptr; split=> //.
+    + case: (hwfr) => hwfsr hval hptr; split=> //. *) *)
       + move=> y sry bytesy vy hgvalidy hgety.
         have [hread hty] := hval _ _ _ _ hgvalidy hgety.
+        have := Forall3_forall hargs. wf_arg_pointer
+        hresults wf_result_pointer sem_call
         split=> //.
         move=> off hmem w hgett /=.
         move: hread => /(_ off hmem w hgett) <-.
         symmetry.
         rewrite /mem_unchanged_params in hunch.
-        apply (hunch _ hfd).
+(*         apply (hunch _ hfd). *)
+        apply hunch.
         have /= hwfy := check_gvalid_wf hpmap (wfr_wf (wf_rmap := hwfr)) hgvalidy.
         apply (hvalid _ _ hwfy.(wfr_slot)).
         have hjk := zbetween_sub_region_addr hwf.(wfsl_no_overflow) hwfy.
@@ -3369,13 +3436,16 @@ Proof.
         (* a-t-on déjà fait des preuves similaires dans stack_alloc_proof ? Je pense. *)
         have /= hwfy := check_gvalid_wf hpmap (wfr_wf (wf_rmap := hwfr)) hgvalidy.
         move=> contra.
-        have := hdisj' _ _ hwfy.(wfr_slot) contra.
+        have := hdisj_ _ _ hwfy.(wfr_slot) contra.
         apply zbetween_not_disjoint_zrange.
         have hjk := zbetween_sub_region_addr hwf.(wfsl_no_overflow) hwfy.
         apply: (between_byte _ hjk).
         apply (no_overflow_sub_region_addr hwf.(wfsl_no_overflow) hwfy).
         have := get_val_byte_bound hgett. rewrite hty. done.
         done.
+        apply: (nth_Forall3 (a:=None) (b:=Vbool true) (c:=Vbool true)).
+        admit. admit.
+        move=> i hi pi p2.
         rewrite /disjoint_from_writable_params.
         admit.
       + move=> y sry /hptr [pky [hly hpky]].
