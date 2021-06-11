@@ -323,7 +323,7 @@ Definition set_pure_bytes rv (x:var) sr ofs len :=
   let bytes := if ofs is Some _ then ByteSet.add i (get_bytes x bm)
                else get_bytes x bm
   in
-  (* clear all bytes corresponding to sub1 *)
+  (* clear all bytes corresponding to z1 *)
   let bm := clear_bytes_map i bm in
   (* set the bytes *)
   let bm := Mvar.set bm x bytes in
@@ -333,6 +333,8 @@ Definition set_bytes rv (x:var) sr (ofs : option Z) (len : Z) :=
   Let _     := writable sr.(sr_region) in
   ok (set_pure_bytes rv x sr ofs len).
 
+(* TODO: as many functions are similar, maybe we could have one big function
+   taking flags as arguments that tell whether we have to check align/check valid... *)
 Definition set_sub_region rmap (x:var) sr (ofs : option Z) (len : Z) :=
   Let rv := set_bytes rmap x sr ofs len in
   ok {| var_region := Mvar.set rmap.(var_region) x sr;
@@ -963,7 +965,7 @@ Definition alloc_call_arg rmap (sao_param: option param_info) (e:pexpr) :=
     let sr := srs.1 in
     Let _  := if pi.(pp_writable) then writable sr.(sr_region) else ok tt in
     Let _  := check_align sr pi.(pp_align) in
-    ok (Some (pi.(pp_writable),sr), Pvar (mk_lvar (with_var xv p)))
+    ok (Some (pi.(pp_writable),sr,xv.(vtype)), Pvar (mk_lvar (with_var xv p)))
   | Some _, _ => cerror "the argument should be a reg ptr" 
   end.
 
@@ -971,11 +973,11 @@ Definition disj_sub_regions sr1 sr2 :=
   ~~(region_same sr1.(sr_region) sr2.(sr_region)) || 
   disjoint_zones sr1.(sr_zone) sr2.(sr_zone).
 
-Fixpoint check_all_disj (notwritables writables:seq sub_region) (srs:seq (option (bool * sub_region) * pexpr)) := 
+Fixpoint check_all_disj (notwritables writables:seq sub_region) (srs:seq (option (bool * sub_region * stype) * pexpr)) := 
   match srs with
   | [::] => true
   | (None, _) :: srs => check_all_disj notwritables writables srs
-  | (Some (writable, sr), _) :: srs => 
+  | (Some (writable, sr, _), _) :: srs => 
     if all (disj_sub_regions sr) writables then 
       if writable then 
         if all (disj_sub_regions sr) notwritables then 
@@ -1022,15 +1024,22 @@ Definition get_Lvar lv :=
   | _      => cerror "get_Lvar variable expected"
   end.
 
-Definition alloc_lval_call (srs:seq (option (bool * sub_region) * pexpr)) rmap (r: lval) (i:option nat) :=
+Definition alloc_lval_call (srs:seq (option (bool * sub_region * stype) * pexpr)) rmap (r: lval) (i:option nat) :=
   match i with
   | None => 
     Let _ := check_lval_reg_call r in
     ok (rmap, r)
   | Some i => 
     match nth (None, Pconst 0) srs i with
-    | (Some (_,sr), _) =>
+    | (Some (_,sr,ty), _) =>
       Let x := get_Lvar r in
+      (* probably [subtype ty x.(vtype)] is enough, but we can prove
+         that [subtype x.(vtype) ty] holds whenever [is_sarr ty], so this is
+         equivalent
+      *)
+      Let _ := assert (x.(vtype) == ty)
+        (Cerr_stk_alloc "alloc_lval_call: the var receiving a result should have the same type as the corresponding argument")
+      in
       Let p := get_regptr x in
       Let rmap := Region.set_arr_call rmap (v_var x) sr in
       (* TODO: Lvar p or Lvar (with_var x p) like in alloc_call_arg? *)
@@ -1249,9 +1258,20 @@ Definition check_result pmap rmap paramsi params oi (x:var_i) :=
     ok x
   end.
 
-Definition check_results pmap rmap paramsi params oi res := 
+(* TODO: clean the 3 [all2] functions *)
+Definition check_all_writable_regions_returned paramsi (ret_pos:seq (option nat)) :=
+  all2 (fun i osr =>
+    match osr with
+    | Some sr => if sr.(sr_region).(r_writable) then Some i \in ret_pos else true
+    | None => true
+    end) (iota 0 (size paramsi)) paramsi.
+
+Definition check_results pmap rmap paramsi params ret_pos res := 
+  Let _ := assert (check_all_writable_regions_returned paramsi ret_pos)
+                  (Cerr_stk_alloc "a writable region is not returned, please report")
+  in
   mapM2 (Cerr_stk_alloc "invalid function info:please report")
-        (check_result pmap rmap paramsi params) oi res.
+        (check_result pmap rmap paramsi params) ret_pos res.
 
 (* TODO: remove set_full ? *)
 Definition sub_region_full x r :=
