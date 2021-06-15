@@ -949,23 +949,58 @@ Definition get_Pvar e :=
   | _      => cerror "get_Pvar: variable expected" 
   end.
 
+(* The name is chosen to be similar to [set_pure_bytes] and [set_move_bytes],
+   but there are probably better ideas.
+   TODO: factorize [set_clear_bytes] and [set_pure_bytes] ?
+*)
+Definition set_clear_bytes rv sr ofs len :=
+  let z     := sr.(sr_zone) in
+  let z1    := sub_zone_at_ofs z ofs len in
+  let i     := interval_of_zone z1 in
+  let bm    := get_bytes_map sr.(sr_region) rv in
+  (* clear all bytes corresponding to z1 *)
+  let bm := clear_bytes_map i bm in
+  Mr.set rv sr.(sr_region) bm.
+
+Definition set_clear rmap sr ofs len :=
+  {| var_region := rmap.(var_region);
+     region_var := set_clear_bytes rmap sr ofs len |}.
+
 (* TODO: srs.1 or srs.2 -> I think both are correct *)
+(* We clear the arguments. This is not necessary in the classic case, because
+   we also clear them when assigning the results in alloc_call_res
+   (this works if each writable reg ptr is returned (which is currently
+   checked by the pretyper) and if each result variable has the same size
+   as the corresponding input variable).
+   But this complexifies the proof and needs a few more
+   checks in stack_alloc to be valid. Thus, for the sake of simplicity, it was
+   decided to make the clearing of the arguments twice : here and in
+   alloc_call_res.
+   Actually, clearing in alloc_call_arg partially enforces that the arguments correspond
+   to disjoint regions, so we could maybe simplify check_all_disj.
+   We could for instance check the validity and clear the writable regions,
+   and then check that the non-writable are still valid.
+   TODO: the error message was much clearer before (disjoint regions while now it is just
+   check_valid failed...)
+   TODO: we could test writable in set_clear, like in set_sub_region
+*)
 Definition alloc_call_arg rmap (sao_param: option param_info) (e:pexpr) := 
   Let x := get_Pvar e in
-  Let _ := assert (~~is_glob x) 
+  Let _ := assert (~~is_glob x)
                   (Cerr_stk_alloc "global variable in argument of a call") in
   let xv := gv x in
   match sao_param, get_local xv with
   | None, None =>
     Let _ := check_diff xv in
-    ok (None, Pvar x)
+    ok (rmap, (None, Pvar x))
   | None, Some _ => cerror "argument not a reg" 
   | Some pi, Some (Pregptr p) => 
     Let srs := Region.check_valid rmap xv (Some 0%Z) (size_slot xv) in
     let sr := srs.1 in
     Let _  := if pi.(pp_writable) then writable sr.(sr_region) else ok tt in
+    let rmap := if pi.(pp_writable) then set_clear rmap sr (Some 0%Z) (size_slot xv) else rmap in
     Let _  := check_align sr pi.(pp_align) in
-    ok (Some (pi.(pp_writable),sr,xv.(vtype)), Pvar (mk_lvar (with_var xv p)))
+    ok (rmap, (Some (pi.(pp_writable),sr), Pvar (mk_lvar (with_var xv p))))
   | Some _, _ => cerror "the argument should be a reg ptr" 
   end.
 
@@ -973,11 +1008,11 @@ Definition disj_sub_regions sr1 sr2 :=
   ~~(region_same sr1.(sr_region) sr2.(sr_region)) || 
   disjoint_zones sr1.(sr_zone) sr2.(sr_zone).
 
-Fixpoint check_all_disj (notwritables writables:seq sub_region) (srs:seq (option (bool * sub_region * stype) * pexpr)) := 
+Fixpoint check_all_disj (notwritables writables:seq sub_region) (srs:seq (option (bool * sub_region) * pexpr)) := 
   match srs with
   | [::] => true
   | (None, _) :: srs => check_all_disj notwritables writables srs
-  | (Some (writable, sr, _), _) :: srs => 
+  | (Some (writable, sr), _) :: srs => 
     if all (disj_sub_regions sr) writables then 
       if writable then 
         if all (disj_sub_regions sr) notwritables then 
@@ -987,10 +1022,13 @@ Fixpoint check_all_disj (notwritables writables:seq sub_region) (srs:seq (option
     else false 
   end.
 
-Definition alloc_call_args rmap (sao_params: seq (option param_info)) (es:seq pexpr) := 
-  Let es  := mapM2 (Cerr_stk_alloc "bad params info:please report") (alloc_call_arg rmap) sao_params es in
-  Let _ := assert (check_all_disj [::] [::] es) 
-           (Cerr_stk_alloc "some writable reg ptr are not disjoints") in
+Definition alloc_call_args rmap sao_params es :=
+  fmapM2 (Cerr_stk_alloc "bad params info:please report") alloc_call_arg rmap sao_params es.
+
+Definition alloc_call_args_full rmap (sao_params: seq (option param_info)) (es:seq pexpr) := 
+  Let es := alloc_call_args rmap sao_params es in
+  Let _  := assert (check_all_disj [::] [::] es.2) 
+                   (Cerr_stk_alloc "some writable reg ptr are not disjoints") in
   ok es.
 
 Definition check_lval_reg_call (r:lval) := 
@@ -1024,22 +1062,15 @@ Definition get_Lvar lv :=
   | _      => cerror "get_Lvar variable expected"
   end.
 
-Definition alloc_lval_call (srs:seq (option (bool * sub_region * stype) * pexpr)) rmap (r: lval) (i:option nat) :=
+Definition alloc_lval_call (srs:seq (option (bool * sub_region) * pexpr)) rmap (r: lval) (i:option nat) :=
   match i with
   | None => 
     Let _ := check_lval_reg_call r in
     ok (rmap, r)
   | Some i => 
     match nth (None, Pconst 0) srs i with
-    | (Some (_,sr,ty), _) =>
+    | (Some (_,sr), _) =>
       Let x := get_Lvar r in
-      (* probably [subtype ty x.(vtype)] is enough, but we can prove
-         that [subtype x.(vtype) ty] holds whenever [is_sarr ty], so this is
-         equivalent
-      *)
-      Let _ := assert (x.(vtype) == ty)
-        (Cerr_stk_alloc "alloc_lval_call: the var receiving a result should have the same type as the corresponding argument")
-      in
       Let p := get_regptr x in
       Let rmap := Region.set_arr_call rmap (v_var x) sr in
       (* TODO: Lvar p or Lvar (with_var x p) like in alloc_call_arg? *)
@@ -1056,7 +1087,8 @@ Definition is_RAnone ral :=
 
 Definition alloc_call (sao_caller:stk_alloc_oracle_t) rmap ini rs fn es := 
   let sao_callee := local_alloc fn in
-  Let es  := alloc_call_args rmap sao_callee.(sao_params) es in
+  Let es  := alloc_call_args_full rmap sao_callee.(sao_params) es in
+  let '(rmap, es) := es in
   Let rs  := alloc_call_res  rmap es sao_callee.(sao_return) rs in (*
   Let _   := assert_check (~~ is_RAnone sao_callee.(sao_return_address))
                (Cerr_stk_alloc "cannot call export function, please report")
@@ -1070,11 +1102,6 @@ Definition alloc_call (sao_caller:stk_alloc_oracle_t) rmap ini rs fn es :=
     in
     assert_check (local_size + sao_callee.(sao_max_size) <=? sao_caller.(sao_max_size))%Z
                  (Cerr_stk_alloc "error in max size computation, please report")
-  in
-  (* TODO: is this check really necessary? *)
-  (* TODO: move -> We check that for each call, while we could check that only for each function. *)
-  Let _   := assert_check (0 <=? sao_callee.(sao_max_size))%Z
-                          (Cerr_stk_alloc "error in max size computation, please report")
   in
   Let _   := assert_check (sao_callee.(sao_align) <= sao_caller.(sao_align))%CMP
                           (Cerr_stk_alloc "non aligned function call, please report")
