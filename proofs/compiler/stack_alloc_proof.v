@@ -3784,39 +3784,40 @@ Lemma zbetween_le p sz1 sz2 :
   zbetween p sz1 p sz2.
 Proof. by rewrite /zbetween !zify; lia. Qed.
 
-Lemma alloc_call_arg_not_None rmap opi e rmap2 bsr e' :
-  alloc_call_arg pmap rmap opi e = ok (rmap2, (bsr, e')) ->
+Lemma alloc_call_arg_aux_not_None rmap0 rmap opi e rmap2 bsr e' :
+  alloc_call_arg_aux pmap rmap0 rmap opi e = ok (rmap2, (bsr, e')) ->
   forall pi, opi = Some pi -> exists sr, bsr = Some (pi.(pp_writable), sr).
 Proof.
   move=> halloc pi ?; subst opi.
-  move: halloc; rewrite /alloc_call_arg.
+  move: halloc; rewrite /alloc_call_arg_aux.
   t_xrbindP=> x _ _ _.
   case: get_local => [pk|//].
   case: pk => // p.
-  t_xrbindP=> -[sr _] _ _ _ _ _ _ /= <- _.
+  t_xrbindP=> -[sr ?] _ _ _ _ _ _ /= <- _.
   by eexists.
 Qed.
 
-Lemma alloc_call_args_not_None rmap sao_params args rmap2 l :
-  alloc_call_args pmap rmap sao_params args = ok (rmap2, l) ->
+Lemma alloc_call_args_aux_not_None rmap sao_params args rmap2 l :
+  alloc_call_args_aux pmap rmap sao_params args = ok (rmap2, l) ->
   List.Forall2 (fun opi bsr => forall pi, opi = Some pi ->
     exists sr, bsr = Some (pi.(pp_writable), sr)) sao_params (map fst l).
 Proof.
-  elim: sao_params args rmap rmap2 l.
-  + by move=> [|//] _ _ _ [_ <-]; constructor.
+  rewrite /alloc_call_args_aux.
+  elim: sao_params args {2}rmap rmap2 l.
+  + move=> [|//] _ _ _ /= [_ <-]; constructor.
   move=> opi sao_params ih [//|arg args] rmap0 /=.
-  t_xrbindP=> _ _ [rmap1 [bsr e]] halloc [rmap2 l] /ih{ih}ih /= _ <-.
+  t_xrbindP=> _ _ [rmap1 [bsr e]] halloc [rmap2 l] /= /ih{ih}ih _ <-.
   constructor=> //.
-  by apply (alloc_call_arg_not_None halloc).
+  by apply (alloc_call_arg_aux_not_None halloc).
 Qed.
 
-Lemma alloc_call_arg_writable rmap opi e rmap2 bsr e' :
-  alloc_call_arg pmap rmap opi e = ok (rmap2, (bsr, e')) ->
+Lemma alloc_call_arg_aux_writable rmap0 rmap opi e rmap2 bsr e' :
+  alloc_call_arg_aux pmap rmap0 rmap opi e = ok (rmap2, (bsr, e')) ->
   forall sr, bsr = Some (true, sr) ->
   sr.(sr_region).(r_writable).
 Proof.
   move=> halloc sr ?; subst bsr.
-  move: halloc; rewrite /alloc_call_arg.
+  move: halloc; rewrite /alloc_call_arg_aux.
   t_xrbindP=> x _ _ _.
   case: opi => [pi|].
   + case: get_local => [pk|//].
@@ -3828,17 +3829,28 @@ Proof.
   by t_xrbindP.
 Qed.
 
-Lemma alloc_call_args_writable rmap sao_params args rmap2 l :
-  alloc_call_args pmap rmap sao_params args = ok (rmap2, l) ->
+Lemma alloc_call_args_aux_writable rmap sao_params args rmap2 l :
+  alloc_call_args_aux pmap rmap sao_params args = ok (rmap2, l) ->
   List.Forall (fun bsr => forall sr, bsr = Some (true, sr) ->
     sr.(sr_region).(r_writable)) (map fst l).
 Proof.
-  elim: sao_params args rmap rmap2 l.
+  rewrite /alloc_call_args_aux.
+  elim: sao_params args {2}rmap rmap2 l.
   + by move=> [|//] _ _ _ [_ <-]; constructor.
   move=> opi sao_params ih [//|arg args] rmap0 /=.
-  t_xrbindP=> _ _ [rmap1 [bsr e]] halloc [rmap2 l] /ih{ih}ih _ <-.
+  t_xrbindP=> _ _ [rmap1 [bsr e]] halloc [rmap2 l] /= /ih{ih}ih _ <-.
   constructor=> //.
-  by apply (alloc_call_arg_writable halloc).
+  by apply (alloc_call_arg_aux_writable halloc).
+Qed.
+
+Lemma Forall3_impl A B C (R1 R2 : A -> B -> C -> Prop) :
+  (forall a b c, R1 a b c -> R2 a b c) ->
+  forall l1 l2 l3,
+  Forall3 R1 l1 l2 l3 ->
+  Forall3 R2 l1 l2 l3.
+Proof.
+  move=> himpl l1 l2 l3 hforall.
+  elim: hforall; eauto using Forall3.
 Qed.
 
 Lemma subset_refl bytes : ByteSet.subset bytes bytes.
@@ -4155,59 +4167,108 @@ Proof.
   by apply incl_bytes_map_refl.
 Qed.
 
-Lemma alloc_call_arg_incl rmap opi e rmap2 bsr e2 :
-  alloc_call_arg pmap rmap opi e = ok (rmap2, (bsr, e2)) ->
-  incl rmap2 rmap.
+Lemma get_var_bytes_set_clear_bytes rv sr ofs len r y :
+  get_var_bytes (set_clear_bytes rv sr ofs len) r y =
+    let bytes := get_var_bytes rv r y in
+    if sr.(sr_region) != r then bytes
+    else
+      let i := interval_of_zone (sub_zone_at_ofs sr.(sr_zone) ofs len) in
+      ByteSet.remove bytes i.
 Proof.
-  rewrite /alloc_call_arg.
+  rewrite /set_clear_bytes /get_var_bytes.
+  rewrite get_bytes_map_setP.
+  case: eqP => [->|] //=.
+  by rewrite get_bytes_clear.
+Qed.
+
+Lemma check_gvalid_set_clear rmap sr ty ofs len y sry bytes :
+  wf_sub_region sr ty ->
+  sr.(sr_region).(r_writable) ->
+  check_gvalid (set_clear rmap sr ofs len) y = Some (sry, bytes) ->
+  exists bytes',
+    check_gvalid rmap y = Some (sry, bytes') /\
+    bytes =
+      if sr_region sr != sr_region sry then bytes' else
+      ByteSet.remove bytes' (interval_of_zone (sub_zone_at_ofs sr.(sr_zone) ofs len)).
+Proof.
+  move=> hwf hw.
+  rewrite /check_gvalid.
+  case: (@idP (is_glob y)) => hg.
+  + case heq: Mvar.get => [[ofs' ws]|//] [<- <-].
+    eexists; split; first by reflexivity.
+    case: eqP => heqr //=.
+    by rewrite -hwf.(wfr_writable) heqr (sub_region_glob_wf (wf_globals heq)).(wfr_writable) in hw.
+  case heq': Mvar.get => [sr'|//] [? <-]; subst sr'.
+  eexists; split; first by reflexivity.
+  by rewrite get_var_bytes_set_clear_bytes.
+Qed.
+
+Lemma interval_of_zone_wf :
+  forall z, 0 < z.(z_len) -> I.wf (interval_of_zone z).
+Proof. by move=> z hlen; rewrite /I.wf /I.is_empty /= !zify; lia. Qed.
+
+Lemma not_mem_empty : forall i, I.wf i -> ~ ByteSet.mem ByteSet.empty i.
+Proof.
+  move=> i hwf /ByteSet.memP /(_ _ (I.memi_imin hwf)).
+  by rewrite ByteSet.emptyE.
+Qed.
+
+Lemma alloc_call_arg_aux_incl (rmap0 rmap:region_map) opi e rmap2 bsr e2 :
+  (forall r, Mr.get rmap0 r <> None -> Mr.get rmap r <> None) ->
+  alloc_call_arg_aux pmap rmap0 rmap opi e = ok (rmap2, (bsr, e2)) ->
+  incl rmap2 rmap /\ (forall r, Mr.get rmap0 r <> None -> Mr.get rmap2 r <> None).
+Proof.
+  move=> hincl.
+  rewrite /alloc_call_arg_aux.
   t_xrbindP=> x _ _ _.
   case: opi => [pi|].
   + case: get_local => [pk|//].
     case: pk => // p.
     t_xrbindP=> -[sr _] /check_validP [bytes [hgvalid -> hmem]] /= _ _ _ _ <- _ _.
-    case: ifP => _; last by apply incl_refl.
-    apply incl_set_clear.
-    move: hgvalid; rewrite /check_gvalid /=.
-    case: Mvar.get => [_|//] [-> hget] hnone.
-    move: hmem; rewrite -hget (get_var_bytes_None _ hnone) /=.
-    move=> /ByteSet.memP /(_ (sr.(sr_zone).(z_ofs))).
-    (* TODO: clean *)
-    have: I.memi (interval_of_zone {| z_ofs := z_ofs (sr_zone sr) + 0; z_len := size_slot (gv x) |})
-   (z_ofs (sr_zone sr)).
-    + rewrite /I.memi /= !zify.
-      have := size_slot_gt0 x.(gv). lia.
-    move=> H /(_ H).
-    rewrite ByteSet.emptyE. done.
+    case: pp_writable; last first.
+    + split=> //.
+      by apply incl_refl.
+    split.
+    + apply incl_set_clear.
+      apply hincl.
+      move: hgvalid; rewrite /check_gvalid /=.
+      case: Mvar.get => [_|//] [-> hget] hnone.
+      move: hmem; rewrite -hget (get_var_bytes_None _ hnone) /=.
+      apply not_mem_empty.
+      apply interval_of_zone_wf.
+      by apply size_slot_gt0.
+    move=> r /=.
+    rewrite /set_clear_bytes Mr.setP.
+    case: eqP => [//|_].
+    by apply hincl.
   case: get_local => [//|].
   t_xrbindP=> _ _ <- _ _.
+  split=> //.
   by apply incl_refl.
 Qed.
 
-Lemma alloc_call_args_incl rmap sao_params args rmap2 l :
-  alloc_call_args pmap rmap sao_params args = ok (rmap2, l) ->
+Lemma alloc_call_args_aux_incl_aux (rmap0 rmap:region_map) err sao_params args rmap2 l :
+  (forall r, Mr.get rmap0 r <> None -> Mr.get rmap r <> None) ->
+  fmapM2 err (alloc_call_arg_aux pmap rmap0) rmap sao_params args = ok (rmap2, l) ->
   incl rmap2 rmap.
 Proof.
   elim: sao_params args rmap rmap2 l.
-  + by move=> [|//] rmap _ _ [<- _]; apply incl_refl.
-  move=> opi sao_params ih [//|arg args] rmap0 /=.
-  t_xrbindP=> _ _ [rmap1 [bsr e]] halloc [rmap2 l] /= /ih{ih}ih <- _.
-  apply (incl_trans ih).
-  by apply (alloc_call_arg_incl halloc).
+  + by move=> [|//] rmap _ _ _ [<- _]; apply incl_refl.
+  move=> opi sao_params ih [//|arg args] rmap /=.
+  t_xrbindP=> _ _ hnnone [rmap1 [bsr e]] halloc [rmap2 l] /= /ih{ih}ih <- _.
+  have [hincl hnnone2] := alloc_call_arg_aux_incl hnnone halloc.
+  apply: (incl_trans _ hincl).
+  by apply ih.
 Qed.
 
-Lemma Forall3_impl A B C (R1 R2 : A -> B -> C -> Prop) :
-  (forall a b c, R1 a b c -> R2 a b c) ->
-  forall l1 l2 l3,
-  Forall3 R1 l1 l2 l3 ->
-  Forall3 R2 l1 l2 l3.
-Proof.
-  move=> himpl l1 l2 l3 hforall.
-  elim: hforall; eauto using Forall3.
-Qed.
+Lemma alloc_call_args_aux_incl rmap sao_params args rmap2 l :
+  alloc_call_args_aux pmap rmap sao_params args = ok (rmap2, l) ->
+  incl rmap2 rmap.
+Proof. by apply alloc_call_args_aux_incl_aux. Qed.
 
-Lemma alloc_call_argP m0 rmap s1 s2 opi e1 rmap2 bsr e2 v1 :
-  valid_state rmap m0 s1 s2 ->
-  alloc_call_arg pmap rmap opi e1 = ok (rmap2, (bsr, e2)) ->
+Lemma alloc_call_arg_auxP m0 rmap0 rmap s1 s2 opi e1 rmap2 bsr e2 v1 :
+  valid_state rmap0 m0 s1 s2 ->
+  alloc_call_arg_aux pmap rmap0 rmap opi e1 = ok (rmap2, (bsr, e2)) ->
   sem_pexpr gd s1 e1 = ok v1 ->
   exists v2, [/\
     sem_pexpr [::] s2 e2 = ok v2,
@@ -4218,7 +4279,7 @@ Lemma alloc_call_argP m0 rmap s1 s2 opi e1 rmap2 bsr e2 v1 :
       incl rmap2 (set_clear rmap sr (Some 0%Z) (size_val v1))].
 Proof.
   move=> hvs.
-  rewrite /alloc_call_arg.
+  rewrite /alloc_call_arg_aux.
   t_xrbindP=> x /get_PvarP -> _ /assertP.
   case: x => x [] //= _.
   case: opi => [pi|]; last first.
@@ -4272,8 +4333,7 @@ Proof.
     split=> //.
     by rewrite hty.
   move=> _ [-> <-].
-  rewrite hty.
-  by apply incl_refl.
+  by rewrite hty; apply incl_refl.
 Qed.
 
 (* TODO: move? *)
@@ -4287,9 +4347,9 @@ Proof.
   elim: hforall; eauto.
 Qed.
 
-Lemma alloc_call_argsP rmap m0 s1 s2 sao_params args rmap2 l vargs1 :
+Lemma alloc_call_args_auxP rmap m0 s1 s2 sao_params args rmap2 l vargs1 :
   valid_state rmap m0 s1 s2 ->
-  alloc_call_args pmap rmap sao_params args = ok (rmap2, l) ->
+  alloc_call_args_aux pmap rmap sao_params args = ok (rmap2, l) ->
   sem_pexprs gd s1 args = ok vargs1 ->
   exists vargs2, [/\
     sem_pexprs [::] s2 (map snd l) = ok vargs2,
@@ -4299,22 +4359,22 @@ Lemma alloc_call_argsP rmap m0 s1 s2 sao_params args rmap2 l vargs1 :
     List.Forall2 (fun bsr varg1 => forall sr, bsr = Some (true, sr) ->
       incl rmap2 (set_clear rmap sr (Some 0%Z) (size_val varg1))) (map fst l) vargs1].
 Proof.
-  elim: sao_params args rmap rmap2 l vargs1.
-  + move=> [|//] /= rmap _ _ _ _ [<- <-] [<-].
+  move=> hvs.
+  have: forall r, Mr.get rmap r <> None -> Mr.get rmap r <> None by done.
+  rewrite /alloc_call_args_aux.
+  elim: sao_params args {2 4 5}rmap rmap2 l vargs1.
+  + move=> [|//] /= rmap0 _ _ _ _ [<- <-] [<-].
     by eexists; (split; first by reflexivity); constructor.
   move=> opi sao_params ih [//|arg args] rmap0 /=.
-  t_xrbindP=> _ _ _ hvs [rmap1 [bsr e]] halloc [rmap2 l] /= hallocs <- <- varg1 hvarg1 vargs1 hvargs1 <-.
-  have [varg2 [hvarg2 harg haddr hclear]] := alloc_call_argP hvs halloc hvarg1.
-  have hincl := alloc_call_arg_incl halloc.
-  have hvs' := valid_state_incl hincl hvs.
-  have [vargs2 [hvargs2 hargs haddrs hclears]] := ih _ _ _ _ _ hvs' hallocs hvargs1.
+  t_xrbindP=> _ _ _ hnnone [rmap1 [bsr e]] halloc [rmap2 l] /= hallocs <- <- varg1 hvarg1 vargs1 hvargs1 <-.
+  have [varg2 [hvarg2 harg haddr hclear]] := alloc_call_arg_auxP hvs halloc hvarg1.
+  have [hincl hnnone2] := alloc_call_arg_aux_incl hnnone halloc.
+  have [vargs2 [hvargs2 hargs haddrs hclears]] := ih _ _ _ _ _ hnnone2 hallocs hvargs1.
   rewrite /= hvarg2 /= hvargs2 /=.
-  eexists; split; first by reflexivity.
-  + by constructor.
-  + by constructor.
-  constructor.
+  eexists; (split; first by reflexivity); constructor=> //.
   + move=> sr /hclear.
-    by apply (incl_trans (alloc_call_args_incl hallocs)).
+    apply: incl_trans.
+    by apply (alloc_call_args_aux_incl_aux hnnone2 hallocs).
   apply: Forall2_impl hclears.
   move=> _ v1 hincl' sr /hincl'{hincl'}hincl'.
   apply (incl_trans hincl').
@@ -4378,19 +4438,19 @@ Proof.
     + move=> b1 sr1 sr2.
       rewrite in_cons => /orP [/eqP [_ ->]|hin1] hin2.
       + by apply hdisj.
-      by apply: (ih1 _ _ _ hin1 hin2).
+      by apply: ih1 hin1 hin2.
     + move=> sr1 sr2.
       rewrite in_cons /= => hin1 hin2.
       apply ih2 => //.
       rewrite in_cons.
       by apply /orP; right.
-    move=> [//|i1] sr1 [|i2] b2 sr2.
-    + move=> /= hnth1 [_ <-] _.
+    move=> [//|i1] sr1 [|i2] b2 sr2 /=.
+    + move=> hnth1 [_ <-] _.
       apply ih2; last by apply mem_head.
       rewrite -hnth1.
       apply mem_nth.
       by apply (nth_not_default hnth1 ltac:(discriminate)).
-    move=> /= hnth1 hnth2 hneq.
+    move=> hnth1 hnth2 hneq.
     by apply: ih3 hnth1 hnth2 ltac:(congruence).
   case: allP => // hdisj2.
   move=> /ih [ih1 ih2 ih3].
@@ -4398,7 +4458,7 @@ Proof.
   + move=> b1 sr1 sr2.
     rewrite in_cons => /orP [/eqP [_ ->]|hin1] hin2.
     + by apply hdisj.
-    apply: (ih1 _ _ _ hin1).
+    apply (ih1 _ _ _ hin1).
     rewrite in_cons.
     by apply /orP; right.
   + move=> sr1 sr2.
@@ -4479,7 +4539,7 @@ Proof.
   by apply (distinct_regions_disjoint_zrange hwf1 hwf2 ltac:(congruence) hw).
 Qed.
 
-Lemma disj_sub_regions_disjoint_values srs sao_params vargs1 vargs2 :
+Lemma disj_sub_regions_disjoint_values (srs:seq (option (bool * sub_region))) sao_params vargs1 vargs2 :
   (forall i1 sr1 i2 b2 sr2, nth None srs i1 = Some (true, sr1) -> nth None srs i2 = Some (b2, sr2) ->
     i1 <> i2 -> disj_sub_regions sr1 sr2) ->
   List.Forall2 (fun opi bsr => forall pi, opi = Some pi -> exists sr, bsr = Some (pi.(pp_writable), sr)) sao_params srs ->
@@ -4506,10 +4566,20 @@ Proof.
   by apply: hdisj hsr1 hsr2 hneq.
 Qed.
 
+(* TODO: is it a good name? *)
+Lemma alloc_call_argsE rmap sao_params args rmap2 l :
+  alloc_call_args pmap rmap sao_params args = ok (rmap2, l) ->
+  alloc_call_args_aux pmap rmap sao_params args = ok (rmap2, l) /\
+  check_all_disj [::] [::] l.
+Proof.
+  rewrite /alloc_call_args.
+  by t_xrbindP=> -[{rmap2}rmap2 {l}l] halloc _ /assertP hdisj [<- <-].
+Qed.
+
 (* Full spec including [disjoint_values] *)
-Lemma alloc_call_args_fullP rmap m0 s1 s2 sao_params args rmap2 l vargs1 :
+Lemma alloc_call_argsP rmap m0 s1 s2 sao_params args rmap2 l vargs1 :
   valid_state rmap m0 s1 s2 ->
-  alloc_call_args_full pmap rmap sao_params args = ok (rmap2, l) ->
+  alloc_call_args pmap rmap sao_params args = ok (rmap2, l) ->
   sem_pexprs gd s1 args = ok vargs1 ->
   exists vargs2, [/\
     sem_pexprs [::] s2 (map snd l) = ok vargs2,
@@ -4520,28 +4590,447 @@ Lemma alloc_call_args_fullP rmap m0 s1 s2 sao_params args rmap2 l vargs1 :
     List.Forall2 (fun bsr varg1 => forall sr, bsr = Some (true, sr) ->
       incl rmap2 (set_clear rmap sr (Some 0%Z) (size_val varg1))) (map fst l) vargs1].
 Proof.
-  move=> hvs halloc hvargs1.
-  move: halloc; rewrite /alloc_call_args_full.
-  t_xrbindP=> -[{rmap2}rmap2 {l}l] halloc _ /assertP hcheck [<- <-].
-  have [vargs2 [hvargs2 hargs haddr hclear]] := alloc_call_argsP hvs halloc hvargs1.
+  move=> hvs /alloc_call_argsE [halloc hdisj] hvargs1.
+  have [vargs2 [hvargs2 hargs haddr hclear]] := alloc_call_args_auxP hvs halloc hvargs1.
   exists vargs2; split=> //.
-  apply: disj_sub_regions_disjoint_values (alloc_call_args_not_None halloc) (alloc_call_args_writable halloc) haddr.
-  by have [_ _ hdisj] := check_all_disjP hcheck.
+  apply: disj_sub_regions_disjoint_values (alloc_call_args_aux_not_None halloc) (alloc_call_args_aux_writable halloc) haddr.
+  by have [_ _ ?] := check_all_disjP hdisj.
+Qed.
+
+(* It would be simpler if we could just use [valid_state_incl]. *)
+(* TODO: useless I think *)
+Lemma valid_state_set_clear rmap m0 s1 s2 sr ty ofs len :
+  valid_state rmap m0 s1 s2 ->
+  wf_sub_region sr ty ->
+  sr.(sr_region).(r_writable) ->
+  valid_state (set_clear rmap sr ofs len) m0 s1 s2.
+Proof.
+  move=> hvs hwf hw.
+  case:(hvs) => hvalid hdisj hincl hincl2 hunch hrip hrsp heqvm hwfr heqmem hglobv htop.
+  constructor=> //=.
+  case: (hwfr) => hwfsr hval hptr; split=> //.
+  + move=> x srx bytes v /(check_gvalid_set_clear hwf hw) [{bytes}bytes [hgvalid ->]].
+    move=> /(hval _ _ _ _ hgvalid) heqval.
+    case: eqP => [heqr|//] /=.
+    case: heqval => hread hty.
+    split=> // off hmem; apply hread.
+    by move: hmem; rewrite ByteSet.removeE => /andP [? _].
+  move=> x srx /hptr [pk [hlx hpk]].
+  exists pk; split=> //.
+  case: pk hlx hpk => // s ofs' ws z f hlx /= hpk hcheck.
+  apply hpk.
+  move: hcheck; rewrite /check_stack_ptr; rewrite get_var_bytes_set_clear_bytes.
+  case: eqP => [heqr|//] /=.
+  by move=> /mem_remove [? _].
+Qed.
+
+(* TODO: useless *)
+Lemma valid_pk_set_clear_bytes rv s2 ty sr ofs ty2 mem2 y pk sry :
+  wf_sub_region sr ty ->
+  (forall p ws,
+    disjoint_zrange (sub_region_addr (sub_region_at_ofs sr ofs (size_of ty2)))
+                    (size_of (stype_at_ofs ofs ty2 ty))
+                    p (wsize_size ws) ->
+    read mem2 p ws = read (emem s2) p ws) ->
+  wf_local y pk ->
+  (forall zofs, ofs = Some zofs -> 0 <= zofs /\ zofs + size_of ty2 <= size_of ty) ->
+  valid_pk rv s2 sry pk ->
+  valid_pk (set_clear_bytes rv sr ofs (size_of ty2)) (with_mem s2 mem2) sry pk.
+Proof.
+  move=> hwf hreadeq hlocal hofs hpk.
+  case: pk hlocal hofs hpk => //= s ofs' ws' z f hlocal hofs hpk.
+  have hwf' := sub_region_at_ofs_wf hwf hofs.
+  have hwf2 := wf_stkptr_wf_sub_region hlocal.
+  rewrite /check_stack_ptr get_var_bytes_set_clear_bytes.
+  case: eqP => heqr /=.
+  + move=> /mem_remove [] /hpk <-.
+    rewrite (disjoint_interval_of_zone (wf_zone_len_gt0 hwf')) // => hdisj.
+    apply hreadeq.
+    apply (disjoint_zones_disjoint_zrange hwf' hwf2 heqr).
+    apply: disjoint_zones_incl_l hdisj.
+    by apply (zbetween_zone_sub_zone_at_ofs_0 hwf').
+  move=> /hpk <-.
+  apply hreadeq.
+  apply disjoint_zrange_sym.
+  by apply (distinct_regions_disjoint_zrange hwf2 hwf' (not_eq_sym heqr)).
+Qed.
+
+(* TODO: useless *)
+Lemma wfr_PTR_set_clear (rmap : region_map) s2 ty sr ofs ty2 mem2 :
+  wf_sub_region sr ty ->
+(*   valid_pk rmap s2 sr pk -> *)
+  (forall p ws,
+    disjoint_zrange (sub_region_addr (sub_region_at_ofs sr ofs (size_of ty2)))
+                    (size_of (stype_at_ofs ofs ty2 ty))
+                    p (wsize_size ws) ->
+    read mem2 p ws = read (emem s2) p ws) ->
+  (forall zofs, ofs = Some zofs -> 0 <= zofs /\ zofs + size_of ty2 <= size_of ty) ->
+  wfr_PTR rmap s2 ->
+  wfr_PTR (set_clear rmap sr ofs (size_of ty2)) (with_mem s2 mem2).
+Proof.
+  move=> hwf hreadeq hofs hptr y sry.
+  move=> /= /hptr [pk [hly hpk]].
+  exists pk; split=> //.
+  by apply (valid_pk_set_clear_bytes hwf hreadeq (wf_locals hly) hofs hpk).
+Qed.
+
+(* TODO: useless *)
+Lemma wfr_VAL_set_clear rmap s1 s2 sr ofs ty ty2 mem2 :
+  wf_rmap rmap s1 s2 ->
+  wf_sub_region sr ty ->
+  sr.(sr_region).(r_writable) ->
+  (forall zofs, ofs = Some zofs -> 0 <= zofs /\ zofs + size_of ty2 <= size_of ty) ->
+  (forall p ws,
+    disjoint_zrange (sub_region_addr (sub_region_at_ofs sr ofs (size_of ty2)))
+                    (size_of (stype_at_ofs ofs ty2 ty))
+                    p (wsize_size ws) ->
+    read mem2 p ws = read (emem s2) p ws) ->
+  wfr_VAL (set_clear rmap sr ofs (size_of ty2)) s1 (with_mem s2 mem2).
+Proof.
+  move=> hwfr hwf hw hofs hreadeq y sry bytesy vy.
+  move=> /(check_gvalid_set_clear hwf hw) [bytes' [hgvalid ->]].
+  move=> /(wfr_val hgvalid).
+  assert (hwfy := check_gvalid_wf wfr_wf hgvalid).
+  have hwf' := sub_region_at_ofs_wf hwf hofs.
+  case: eqP => heqr /=.
+  + apply (eq_sub_region_val_same_region hwf' hwfy heqr hreadeq).
+  apply: (eq_sub_region_val_disjoint_regions hwf' hwfy heqr _ hreadeq).
+  done.
+Qed.
+
+Lemma zbetween_not_disjoint_zrange p1 s1 p2 s2 :
+  zbetween p1 s1 p2 s2 ->
+  0 < s2 ->
+  ~ disjoint_zrange p1 s1 p2 s2.
+Proof. by rewrite /zbetween !zify => hb hlt [_ _ ?]; lia. Qed.
+
+(* TODO: move and rename? *)
+Definition disjoint_bytes b1 b2 :=
+  ByteSet.is_empty (ByteSet.inter b1 b2).
+
+Definition disjointi b i := disjoint_bytes b (ByteSet.full i).
+
+Lemma disjoint_bytesP b1 b2 :
+  reflect (forall n, ByteSet.memi b1 n -> ~ ByteSet.memi b2 n) (disjoint_bytes b1 b2).
+Proof.
+  rewrite /disjoint_bytes; case: ByteSet.is_emptyP => hdisj; constructor.
+  + move=> n hmem1; move: (hdisj n).
+    rewrite ByteSet.interE => /andP h hmem2.
+    by apply h.
+  move=> h; apply hdisj => n.
+  rewrite ByteSet.interE; apply /andP => -[hmem1 hmem2].
+  by apply (h n).
+Qed.
+
+Lemma disjointiP b i :
+  reflect (forall n, ByteSet.memi b n -> ~ I.memi i n) (disjointi b i).
+Proof.
+  rewrite /disjointi; case: disjoint_bytesP => hdisj; constructor.
+  + move=> n /hdisj.
+    by rewrite ByteSet.fullE.
+  move=> h; apply hdisj => n /h.
+  by rewrite ByteSet.fullE.
+Qed.
+
+Lemma check_gvalid_writable rmap x sr bytes :
+  sr.(sr_region).(r_writable) ->
+  check_gvalid rmap x = Some (sr, bytes) ->
+  bytes = get_var_bytes rmap sr.(sr_region) x.(gv).
+Proof.
+  move=> hw.
+  rewrite /check_gvalid.
+  case: (@idP (is_glob x)) => hg.
+  + by case: Mvar.get => [[ws ofs]|//] /= [? _]; subst sr.
+  by case: Mvar.get => [_|//] [-> ?].
+Qed.
+
+Lemma mem_unchanged_holed_rmap m0 s1 s2 mem1 mem2 l :
+  valid_incl m0 (emem s2) ->
+  validw (emem s1) =2 validw mem1 ->
+  List.Forall (fun '(sr, ty) => wf_sub_region sr ty /\ sr.(sr_region).(r_writable)) l ->
+  (forall p,
+    validw (emem s2) p U8 -> ~ validw (emem s1) p U8 ->
+    List.Forall (fun '(sr, ty) => disjoint_zrange (sub_region_addr sr) (size_of ty) p (wsize_size U8)) l ->
+    read mem2 p U8 = read (emem s2) p U8) ->
+  mem_unchanged (emem s1) m0 (emem s2) ->
+  mem_unchanged mem1 m0 mem2.
+Proof.
+  move=> hincl hvalideq1 hlwf hlunch hunch p hvalid1 hvalid2 hdisj.
+  rewrite -hvalideq1 in hvalid2.
+  rewrite (hunch _ hvalid1 hvalid2 hdisj).
+  symmetry; apply hlunch => //.
+  + by apply hincl.
+  apply List.Forall_forall => -[sr ty] hin.
+  have /List.Forall_forall -/(_ _ hin) [hwf hw] := hlwf.
+  apply (disjoint_zrange_incl_l (zbetween_sub_region_addr hwf)).
+  apply (hdisj _ hwf.(wfr_slot)).
+  by rewrite hwf.(wfr_writable).
+Qed.
+
+
+(* "holed" because [rmap.(region_var)] does not contain any information about the sub-regions in [l]. *)
+Lemma eq_read_holed_rmap rmap m0 s1 s2 mem2 l sr ty off :
+  valid_state rmap m0 s1 s2 ->
+  List.Forall (fun '(sr, ty) => wf_sub_region sr ty /\ sr.(sr_region).(r_writable)) l ->
+  (forall p,
+    validw (emem s2) p U8 -> ~ validw (emem s1) p U8 ->
+    List.Forall (fun '(sr, ty) => disjoint_zrange (sub_region_addr sr) (size_of ty) p (wsize_size U8)) l ->
+    read mem2 p U8 = read (emem s2) p U8) ->
+  List.Forall (fun '(sr, ty) => forall x,
+    disjointi (get_var_bytes rmap sr.(sr_region) x) (interval_of_zone (sr.(sr_zone)))) l ->
+  wf_sub_region sr ty ->
+  0 <= off /\ off < size_of ty ->
+  (sr.(sr_region).(r_writable) -> exists x, ByteSet.memi (get_var_bytes rmap sr.(sr_region) x) (z_ofs (sr_zone sr) + off)) ->
+  read mem2 (sub_region_addr sr + wrepr _ off)%R U8 = read (emem s2) (sub_region_addr sr + wrepr _ off)%R U8.
+Proof.
+  move=> hvs hlwf hlunch hldisj hwf hoff hmem.
+  case:(hvs) => hvalid hdisj hincl hincl2 hunch hrip hrsp heqvm hwfr heqmem hglobv htop.
+  apply hlunch.
+  + apply (hvalid _ _ hwf.(wfr_slot)).
+    apply: between_byte hoff.
+    + by apply (no_overflow_sub_region_addr hwf).
+    by apply (zbetween_sub_region_addr hwf).
+  + move=> hval.
+    have := hdisj _ _ hwf.(wfr_slot) hval.
+    apply zbetween_not_disjoint_zrange => //.
+    apply: between_byte hoff.
+    + by apply (no_overflow_sub_region_addr hwf).
+    by apply (zbetween_sub_region_addr hwf).
+  apply List.Forall_forall => -[sr2 ty2] hin2.
+  have /List.Forall_forall -/(_ _ hin2) hdisj2 := hldisj.
+  have /List.Forall_forall -/(_ _ hin2) [hwf2 hw2] := hlwf.
+  rewrite (sub_region_addr_offset (size_of sword8)).
+  change (wsize_size U8) with (size_of sword8).
+  have hoff': forall zofs, Some off = Some zofs -> 0 <= zofs /\ zofs + size_of sword8 <= size_of ty.
+  + by move=> _ [<-] /=; rewrite wsize8; by lia.
+  have hwf' := sub_region_at_ofs_wf hwf hoff'.
+  case: (sr2.(sr_region) =P sr.(sr_region)) => heqr.
+  + apply (disjoint_zones_disjoint_zrange hwf2 hwf') => //.
+    move: hmem; rewrite -heqr => /(_ hw2) [x hmem].
+    move: (hdisj2 x) => /disjointiP /(_ _ hmem).
+    rewrite /I.memi /disjoint_zones /= !Zcmp_le !zify wsize8.
+    by have := hwf2.(wfz_len); lia.
+  by apply (distinct_regions_disjoint_zrange hwf2 hwf').
+Qed.
+
+Lemma wfr_VAL_holed_rmap rmap m0 s1 s2 mem1 mem2 l :
+  valid_state rmap m0 s1 s2 ->
+  List.Forall (fun '(sr, ty) => wf_sub_region sr ty /\ sr.(sr_region).(r_writable)) l ->
+  (forall p,
+    validw (emem s2) p U8 -> ~ validw (emem s1) p U8 ->
+    List.Forall (fun '(sr, ty) => disjoint_zrange (sub_region_addr sr) (size_of ty) p (wsize_size U8)) l ->
+    read mem2 p U8 = read (emem s2) p U8) ->
+  List.Forall (fun '(sr, ty) => forall x,
+    disjointi (get_var_bytes rmap sr.(sr_region) x) (interval_of_zone (sr.(sr_zone)))) l ->
+  wfr_VAL rmap (with_mem s1 mem1) (with_mem s2 mem2).
+Proof.
+  move=> hvs hlwf hlunch hldisj.
+  move=> x sr bytes v /= hgvalid /(wfr_val hgvalid) [hread hty].
+  have /(check_gvalid_wf wfr_wf) /= hwf := hgvalid.
+  split=> // off hmem w /dup[] /get_val_byte_bound; rewrite hty => hoff hget.
+  rewrite -(hread _ hmem _ hget).
+  apply (eq_read_holed_rmap hvs hlwf hlunch hldisj hwf hoff).
+  move=> hw.
+  by exists x.(gv); move: hmem; have -> := check_gvalid_writable hw hgvalid.
+Qed.
+
+Lemma wfr_PTR_holed_rmap rmap m0 s1 s2 mem2 l :
+  valid_state rmap m0 s1 s2 ->
+  List.Forall (fun '(sr, ty) => wf_sub_region sr ty /\ sr.(sr_region).(r_writable)) l ->
+  (forall p,
+    validw (emem s2) p U8 -> ~ validw (emem s1) p U8 ->
+    List.Forall (fun '(sr, ty) => disjoint_zrange (sub_region_addr sr) (size_of ty) p (wsize_size U8)) l ->
+    read mem2 p U8 = read (emem s2) p U8) ->
+  List.Forall (fun '(sr, ty) => forall x,
+    disjointi (get_var_bytes rmap sr.(sr_region) x) (interval_of_zone (sr.(sr_zone)))) l ->
+  wfr_PTR rmap (with_mem s2 mem2).
+Proof.
+  move=> hvs hlwf hlunch hldisj.
+  move=> x sr /wfr_ptr [pk [hlx hpk]].
+  exists pk; split=> //.
+  case: pk hlx hpk => // s ofs ws z f hlx /= hpk hcheck.
+  rewrite -(hpk hcheck).
+  apply eq_read => i hi; rewrite addE.
+  have /wf_locals /= hlocal := hlx.
+  have hwfs := wf_stkptr_wf_sub_region hlocal.
+  apply (eq_read_holed_rmap hvs hlwf hlunch hldisj hwfs hi).
+  move=> _; exists f.
+  rewrite memi_mem_U8; apply: subset_mem hcheck; rewrite subset_interval_of_zone.
+  rewrite -(Z.add_0_l i).
+  rewrite -(sub_zone_at_ofs_compose _ _ _ (size_of sword64)).
+  apply zbetween_zone_byte => //.
+  by apply zbetween_zone_refl.
+Qed.
+
+Lemma valid_state_holed_rmap rmap m0 s1 s2 mem1 mem2 l :
+  valid_state rmap m0 s1 s2 ->
+  validw (emem s1) =2 validw mem1 ->
+  stack_stable (emem s2) mem2 ->
+  validw (emem s2) =2 validw mem2 ->
+  eq_mem_source mem1 mem2 ->
+  List.Forall (fun '(sr, ty) => wf_sub_region sr ty /\ sr.(sr_region).(r_writable)) l ->
+  (forall p,
+    validw (emem s2) p U8 -> ~ validw (emem s1) p U8 ->
+    List.Forall (fun '(sr, ty) => disjoint_zrange (sub_region_addr sr) (size_of ty) p (wsize_size U8)) l ->
+    read mem2 p U8 = read (emem s2) p U8) ->
+  List.Forall (fun '(sr, ty) => forall x,
+    disjointi (get_var_bytes rmap sr.(sr_region) x) (interval_of_zone (sr.(sr_zone)))) l ->
+  valid_state rmap m0 (with_mem s1 mem1) (with_mem s2 mem2).
+Proof.
+  move=> hvs hvalideq1 hss2 hvalideq2 heqmem_ hlwf hlunch hldisj.
+  case:(hvs) => hvalid hdisj hincl hincl2 hunch hrip hrsp heqvm hwfr heqmem hglobv htop.
+  constructor=> //=.
+  + by move=> ??; rewrite -hvalideq2; apply hvalid.
+  + by move=> ??; rewrite -hvalideq1; apply hdisj.
+  + by move=> ?; rewrite -hvalideq1 -hvalideq2; apply hincl.
+  + by move=> ?; rewrite -hvalideq2; apply hincl2.
+  + by apply (mem_unchanged_holed_rmap hincl2 hvalideq1 hlwf hlunch hunch).
+  + case: (hwfr) => hwfsr hval hptr; split=> //.
+    + by apply (wfr_VAL_holed_rmap hvs hlwf hlunch hldisj).
+    by apply (wfr_PTR_holed_rmap hvs hlwf hlunch hldisj).
+  by rewrite -hss2.(ss_top_stack).
+Qed.
+
+(* TODO: useless *)
+Lemma valid_state_alloc_call_arg_aux rmap0 rmap m0 s1 s2 opi e rmap2 bsr e' :
+  valid_state rmap0 m0 s1 s2 ->
+  valid_state rmap m0 s1 s2 ->
+  alloc_call_arg_aux pmap rmap0 rmap opi e = ok (rmap2, (bsr, e')) ->
+  valid_state rmap2 m0 s1 s2.
+Proof.
+  move=> hvs0 hvs.
+  rewrite /alloc_call_arg_aux.
+  set valid_state := valid_state. (* hack due to typeclass interacting badly *)
+  t_xrbindP=> x _ _ _.
+  case: opi => [pi|].
+  + case: get_local => [pk|//].
+    case: pk => // p.
+    t_xrbindP=> -[sr _] /= /check_validP [bytes [hgvalid _ _]] tt hw _ _ <- _ _.
+    case: pp_writable hw => // /assertP hw.
+    have /(check_gvalid_wf wfr_wf) /= hwf := hgvalid.
+    by apply (valid_state_set_clear _ _ hvs hwf hw).
+  case: get_local => //.
+  by t_xrbindP=> _ _ <- _ _.
+Qed.
+
+(* TODO: useless -> consequence of valid_state_incl *)
+Lemma valid_state_alloc_call_args_aux rmap m0 s1 s2 sao_params args rmap2 l :
+  valid_state rmap m0 s1 s2 ->
+  alloc_call_args_aux pmap rmap sao_params args = ok (rmap2, l) ->
+  valid_state rmap2 m0 s1 s2.
+Proof.
+(*  move=> hvs halloc.
+    by apply (valid_state_incl (alloc_call_args_aux_incl halloc)).
+*)
+  move=> hvs0.
+  rewrite /alloc_call_args_aux => halloc.
+  elim: sao_params args {2 3}rmap rmap2 l halloc (hvs0).
+  + by move=> [|//] rmap0 _ _ [<- _] hvs.
+  move=> opi sao_params ih [//|arg args] rmap0 /=.
+  set valid_state := valid_state. (* hack due to typeclass interacting badly *)
+  t_xrbindP=> _ _ [rmap1 [bsr e]] halloc [rmap2 l] /ih{ih}ih <- _ hvs.
+  apply ih.
+  by apply (valid_state_alloc_call_arg_aux hvs0 hvs halloc).
+Qed.
+
+(* idée :
+   - lemme générique : si ce qui est modifié est clean, on reste valid_state
+   - on en déduit un lemme sur set_clear
+   - on en déduit un lemme sur set_sub_region
+*)
+
+Lemma Forall3_forall A B C (R : A -> B -> C -> Prop) l1 l2 l3 :
+  Forall3 R l1 l2 l3 ->
+  forall a b c, List.In (a, (b, c)) (zip l1 (zip l2 l3)) -> R a b c.
+Proof.
+  elim {l1 l2 l3} => // a b c l1 l2 l3 h hforall ih a2 b2 c2 /=.
+  case.
+  + by move=> [<- <- <-].
+  by apply ih.
+Qed.
+
+Lemma forall_Forall3 A B C (R : A -> B -> C -> Prop) l1 l2 l3 :
+  size l1 = size l2 -> size l1 = size l3 ->
+  (forall a b c, List.In (a, (b, c)) (zip l1 (zip l2 l3)) -> R a b c) ->
+  Forall3 R l1 l2 l3.
+Proof.
+  elim: l1 l2 l3.
+  + by move=> [|//] [|//]; constructor.
+  move=> a l1 ih [//|b l2] [//|c l3] [hsize1] [hsize2] hin.
+  constructor.
+  + by apply hin; left.
+  apply ih => //.
+  move=> ??? h.
+  by apply hin; right.
+Qed.
+
+Lemma nth_Forall3 A B C (R : A -> B -> C -> Prop) l1 l2 l3 a b c:
+  size l1 = size l2 -> size l1 = size l3 ->
+  (forall i, (i < size l1)%nat -> R (nth a l1 i) (nth b l2 i) (nth c l3 i)) ->
+  Forall3 R l1 l2 l3.
+Proof.
+  elim: l1 l2 l3.
+  + by move=> [|//] [|//]; constructor.
+  move=> a0 l1 ih [//|b0 l2] [//|c0 l3] [hsize1] [hsize2] hnth.
+  constructor.
+  + by apply (hnth 0%nat).
+  apply ih => //.
+  move=> i.
+  by apply (hnth i.+1).
+Qed.
+Global Arguments nth_Forall3 [A B C R l1 l2 l3].
+
+Lemma Forall2_forall A B (R : A -> B -> Prop) l1 l2 :
+  List.Forall2 R l1 l2 ->
+  forall a b, List.In (a, b) (zip l1 l2) ->
+  R a b.
+Proof.
+  elim=> // a b la lb h hforall ih a2 b2 /=.
+  case.
+  + by move=> [<- <-].
+  by apply ih.
 Qed.
 
 (*
-  alloc_call_args pmap rmap sao_params args = ok l ->
-   disjoint_values
-    forall i1 b1 sr1 i2 b2 sr2 e1 x1 e2 x2,
-      nth None (map fst l) i1 = Some (b1, sr1) ->
-      nth None (map fst l) i2 = Some (b2, sr2) ->
-      nth (Pconst 0) args i1 = e1 -> get_Pvar e1 = ok x1 ->
-      nth (Pconst 0) args i2 = e2 -> get_Pvar e2 = ok x2 ->
-      i1 <> i2 ->
-      b1 ->
-      disjoint_zrange (sub_region_addr sr1) (size_slot x1.(gv)) (sub_region_addr sr2) (size_slot x2.(gv)).
+Lemma alloc_call_arg_incl rmap opi e rmap2 bsr e2 :
+  alloc_call_arg pmap rmap opi e = ok (rmap2, (bsr, e2)) ->
+  incl rmap2 rmap.
 Proof.
-Admitted.
+  rewrite /alloc_call_arg.
+  t_xrbindP=> x _ _ _.
+  case: opi => [pi|].
+  + case: get_local => [pk|//].
+    case: pk => // p.
+    t_xrbindP=> -[sr _] /check_validP [bytes [hgvalid -> hmem]] /= _ _ _ _ <- _ _.
+    case: ifP => _; last by apply incl_refl.
+    apply incl_set_clear.
+    move: hgvalid; rewrite /check_gvalid /=.
+    case: Mvar.get => [_|//] [-> hget] hnone.
+    move: hmem; rewrite -hget (get_var_bytes_None _ hnone) /=.
+    move=> /ByteSet.memP /(_ (sr.(sr_zone).(z_ofs))).
+    (* TODO: clean *)
+    have: I.memi (interval_of_zone {| z_ofs := z_ofs (sr_zone sr) + 0; z_len := size_slot (gv x) |})
+   (z_ofs (sr_zone sr)).
+    + rewrite /I.memi /= !zify.
+      have := size_slot_gt0 x.(gv). lia.
+    move=> H /(_ H).
+    rewrite ByteSet.emptyE. done.
+  case: get_local => [//|].
+  t_xrbindP=> _ _ <- _ _.
+  by apply incl_refl.
+Qed.
+
+Lemma alloc_call_args_incl rmap sao_params args rmap2 l :
+  alloc_call_args pmap rmap sao_params args = ok (rmap2, l) ->
+  incl rmap2 rmap.
+Proof.
+  elim: sao_params args rmap rmap2 l.
+  + by move=> [|//] rmap _ _ [<- _]; apply incl_refl.
+  move=> opi sao_params ih [//|arg args] rmap0 /=.
+  t_xrbindP=> _ _ [rmap1 [bsr e]] halloc [rmap2 l] /= /ih{ih}ih <- _.
+  apply (incl_trans ih).
+  by apply (alloc_call_arg_incl halloc).
+Qed.
 *)
 
 Lemma check_lval_reg_callP r tt :
@@ -4633,42 +5122,6 @@ Lemma get_regptrP x p :
   get_regptr pmap x = ok p ->
   Mvar.get pmap.(locals) x = Some (Pregptr p).
 Proof. by rewrite /get_regptr; case heq: get_local => [[]|] // [<-]. Qed.
-
-Lemma get_var_bytes_set_clear_bytes rv sr ofs len r y :
-  get_var_bytes (set_clear_bytes rv sr ofs len) r y =
-    let bytes := get_var_bytes rv r y in
-    if sr.(sr_region) != r then bytes
-    else
-      let i := interval_of_zone (sub_zone_at_ofs sr.(sr_zone) ofs len) in
-      ByteSet.remove bytes i.
-Proof.
-  rewrite /set_clear_bytes /get_var_bytes.
-  rewrite get_bytes_map_setP.
-  case: eqP => [->|] //=.
-  by rewrite get_bytes_clear.
-Qed.
-
-Lemma check_gvalid_set_clear rmap sr ty ofs len y sry bytes :
-  wf_sub_region sr ty ->
-  sr.(sr_region).(r_writable) ->
-  check_gvalid (set_clear rmap sr ofs len) y = Some (sry, bytes) ->
-  exists bytes',
-    check_gvalid rmap y = Some (sry, bytes') /\
-    bytes =
-      if sr_region sr != sr_region sry then bytes' else
-      ByteSet.remove bytes' (interval_of_zone (sub_zone_at_ofs sr.(sr_zone) ofs len)).
-Proof.
-  move=> hwf hw.
-  rewrite /check_gvalid.
-  case: (@idP (is_glob y)) => hg.
-  + case heq: Mvar.get => [[ofs' ws]|//] [<- <-].
-    eexists; split; first by reflexivity.
-    case: eqP => heqr //=.
-    by rewrite -hwf.(wfr_writable) heqr (sub_region_glob_wf (wf_globals heq)).(wfr_writable) in hw.
-  case heq': Mvar.get => [sr'|//] [? <-]; subst sr'.
-  eexists; split; first by reflexivity.
-  by rewrite get_var_bytes_set_clear_bytes.
-Qed.
 
 (* type_of_val v or vargs1 ??? *) (* should we add wf_args ??? *)
 Lemma alloc_lval_callP rmap m0 s1 s2 srs r oi rmap2 r2 vargs1 vargs2 vres1 vres2 s1' :

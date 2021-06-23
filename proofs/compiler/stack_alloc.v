@@ -984,7 +984,7 @@ Definition set_clear rmap sr ofs len :=
    check_valid failed...)
    TODO: we could test writable in set_clear, like in set_sub_region
 *)
-Definition alloc_call_arg rmap (sao_param: option param_info) (e:pexpr) := 
+Definition alloc_call_arg_aux rmap0 rmap (sao_param: option param_info) (e:pexpr) := 
   Let x := get_Pvar e in
   Let _ := assert (~~is_glob x)
                   (Cerr_stk_alloc "global variable in argument of a call") in
@@ -995,7 +995,7 @@ Definition alloc_call_arg rmap (sao_param: option param_info) (e:pexpr) :=
     ok (rmap, (None, Pvar x))
   | None, Some _ => cerror "argument not a reg" 
   | Some pi, Some (Pregptr p) => 
-    Let srs := Region.check_valid rmap xv (Some 0%Z) (size_slot xv) in
+    Let srs := Region.check_valid rmap0 xv (Some 0%Z) (size_slot xv) in
     let sr := srs.1 in
     Let _  := if pi.(pp_writable) then writable sr.(sr_region) else ok tt in
     let rmap := if pi.(pp_writable) then set_clear rmap sr (Some 0%Z) (size_slot xv) else rmap in
@@ -1003,6 +1003,9 @@ Definition alloc_call_arg rmap (sao_param: option param_info) (e:pexpr) :=
     ok (rmap, (Some (pi.(pp_writable),sr), Pvar (mk_lvar (with_var xv p))))
   | Some _, _ => cerror "the argument should be a reg ptr" 
   end.
+
+Definition alloc_call_args_aux rmap sao_params es :=
+  fmapM2 (Cerr_stk_alloc "bad params info:please report") (alloc_call_arg_aux rmap) rmap sao_params es.
 
 Definition disj_sub_regions sr1 sr2 :=
   ~~(region_same sr1.(sr_region) sr2.(sr_region)) || 
@@ -1022,11 +1025,8 @@ Fixpoint check_all_disj (notwritables writables:seq sub_region) (srs:seq (option
     else false 
   end.
 
-Definition alloc_call_args rmap sao_params es :=
-  fmapM2 (Cerr_stk_alloc "bad params info:please report") alloc_call_arg rmap sao_params es.
-
-Definition alloc_call_args_full rmap (sao_params: seq (option param_info)) (es:seq pexpr) := 
-  Let es := alloc_call_args rmap sao_params es in
+Definition alloc_call_args rmap (sao_params: seq (option param_info)) (es:seq pexpr) := 
+  Let es := alloc_call_args_aux rmap sao_params es in
   Let _  := assert (check_all_disj [::] [::] es.2) 
                    (Cerr_stk_alloc "some writable reg ptr are not disjoints") in
   ok es.
@@ -1087,9 +1087,9 @@ Definition is_RAnone ral :=
 
 Definition alloc_call (sao_caller:stk_alloc_oracle_t) rmap ini rs fn es := 
   let sao_callee := local_alloc fn in
-  Let es  := alloc_call_args_full rmap sao_callee.(sao_params) es in
+  Let es  := alloc_call_args rmap sao_callee.(sao_params) es in
   let '(rmap, es) := es in
-  Let rs  := alloc_call_res  rmap es sao_callee.(sao_return) rs in (*
+  Let rs  := alloc_call_res rmap es sao_callee.(sao_return) rs in (*
   Let _   := assert_check (~~ is_RAnone sao_callee.(sao_return_address))
                (Cerr_stk_alloc "cannot call export function, please report")
   in *)
