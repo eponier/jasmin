@@ -39,7 +39,7 @@ Unset Printing Implicit Defensive.
 Local Open Scope vmap.
 Local Open Scope seq_scope.
 
-(* TODO téméraire : wsize_size dans positive plutôt que dans Z ? *)
+(* TODO: could [wsize_size] return a [positive] rather than a [Z]? *)
 Definition size_of (t:stype) :=
   match t with
   | sword sz => wsize_size sz
@@ -123,29 +123,6 @@ Qed.
 Definition zone_eqMixin := Equality.Mixin zone_eq_axiom.
 Canonical  zone_eqType  := EqType zone zone_eqMixin.
 
-(*
-Module CmpZ.
-
-  Definition t := [eqType of zone].
-
-  Definition cmp (z1 z2: t) := 
-    Lex (Z.compare z1.(z_ofs) z2.(z_ofs))
-        (Z.compare z1.(z_len) z2.(z_len)).
-
-  Instance cmpO : Cmp cmp.
-  Proof.
-    constructor => [x y | y x z c | [??] [??]]; rewrite /cmp !Lex_lex.
-    + by apply lex_sym; apply cmp_sym.
-    + by apply lex_trans=> /=; apply cmp_ctrans.
-    move=> /lex_eq [] /= h1 h2.
-    by rewrite (cmp_eq h1) (cmp_eq h2).
-  Qed.
-
-End CmpZ.
-
-Module Mz := Mmake (CmpZ).
-*)
-
 Definition disjoint_zones z1 z2 := 
   (((z1.(z_ofs) + z1.(z_len))%Z <= z2.(z_ofs)) || 
    ((z2.(z_ofs) + z2.(z_len))%Z <= z1.(z_ofs)))%CMP.
@@ -168,28 +145,6 @@ Qed.
 
 Definition sub_region_eqMixin := Equality.Mixin sub_region_eq_axiom.
 Canonical sub_region_eqType := EqType sub_region sub_region_eqMixin.
-
-(*
-Module CmpSr.
-  Definition t := [eqType of sub_region].
-
-  Definition cmp (sr1 sr2: t) := 
-    Lex (CmpR.cmp sr1.(sr_region) sr2.(sr_region))
-        (CmpZ.cmp sr1.(sr_zone) sr2.(sr_zone)).
-
-  Instance cmpO : Cmp cmp.
-  Proof.
-    constructor => [x y | y x z c | [??] [??]]; rewrite /cmp !Lex_lex.
-    + by apply lex_sym; apply cmp_sym.
-    + by apply lex_trans=> /=; apply cmp_ctrans.
-    move=> /lex_eq [] /= h1 h2.
-    by rewrite (cmp_eq h1) (cmp_eq h2).
-  Qed.
-
-End CmpSr.
-
-Module Msr := Mmake(CmpSr).
-*)
 
 (* ------------------------------------------------------------------ *)
 (* idea: could we use a gvar instead of var & v_scope? *)
@@ -308,13 +263,6 @@ Definition clear_bytes_map i (bm:bytes_map) :=
 *)
 
 (* TODO: take [bytes] as an argument ? *)
-(* TODO : lemma to be proved
-valid_state ->
-write_mem p ws w = mem2->
-between (sub_region_addr sr) . p ws ->
-eq_sub_region_val mem2 sr bytes v ->
-valid_state rmap2 (with_vm s1 (evm s1).[x <- ok (pword_of_word v)]) (with_mem s2 mem2).
-*)
 Definition set_pure_bytes rv (x:var) sr ofs len :=
   let z     := sr.(sr_zone) in
   let z1    := sub_zone_at_ofs z ofs len in
@@ -376,7 +324,6 @@ Definition set_arr_word (rmap:region_map) (x:var) ofs ws :=
   Let _ := check_align sr ws in
   set_sub_region rmap x sr ofs (wsize_size ws).
 
-(* TODO: verify that the right len is [size_slot x], not sr.(sr_zone).(z_len) !!! *)
 Definition set_arr_call rmap x sr := set_sub_region rmap x sr (Some 0)%Z (size_slot x).
 
 Definition set_move_bytes rv x sr :=
@@ -406,12 +353,6 @@ Definition set_move (rmap:region_map) (x:var) sr :=
      region_var := rv |}.
 
 Definition set_arr_init rmap x sr := set_move rmap x sr.
-
-Definition set_full rmap x r := 
-  let len := size_slot x in
-  let z := {| z_ofs := 0; z_len := len |} in
-  let sr := {| sr_region := r; sr_zone := z |} in
-  set_move rmap x sr.
 
 Definition incl_bytes_map (_r: region) (bm1 bm2: bytes_map) := 
   Mvar.incl (fun x => ByteSet.subset) bm1 bm2.
@@ -565,11 +506,13 @@ Definition get_var_kind x :=
   else 
     ok (omap VKptr (get_local xv)).
 
-(* TODO: factorize with [set_full] ? probably not worth *)
-Definition sub_region_glob x ws :=
-  let r := {| r_slot := x; r_align := ws; r_writable := false |} in
+Definition sub_region_full x r :=
   let z := {| z_ofs := 0; z_len := size_slot x |} in
   {| sr_region := r; sr_zone := z |}.
+
+Definition sub_region_glob x ws :=
+  let r := {| r_slot := x; r_align := ws; r_writable := false |} in
+  sub_region_full x r.
 
 Definition check_vpk rmap (x:var) vpk ofs len :=
   match vpk with
@@ -580,23 +523,16 @@ Definition check_vpk rmap (x:var) vpk ofs len :=
     check_valid rmap x ofs len
   end.
 
-(* On pourrait réécrire check_vpk comme ceci (nom à changer, vu qu'il n'y a plus de vpk) *)
-(* Ou au pire définir cette fonction dans la partie preuve uniquement ?
+(* We could write [check_vpk] as follows.
   Definition check_vpk' rmap (x : gvar) ofs len :=
     let (sr, bytes) := check_gvalid rmap x in
-    let sr' := {| sr_region := sr.(sr_region);
-                  sr_zone   := sub_zone_at_ofs sr.(sr_zone) ofs len |}
-    in
-    let sub_ofs  := sub_zone_at_ofs sr.(sr_zone) ofs len in
-    let isub_ofs := interval_of_zone sub_ofs in
+    let sr' := sub_region_at_ofs sr.(sr_zone) ofs len in
+    let isub_ofs := interval_of_zone sr'.(sr_zone) in
     (* we check if [isub_ofs] is a subset of one of the intervals of [bytes] *)
-    (* ce test est inintéressant dans le cas glob, mais ça factorise
-       l'appel à sub_zone_at_ofs
-    *)
+    (* useless test when [x] is glob, but factorizes call to [sub_region_at_ofs] *)
     Let _   := assert (ByteSet.mem bytes isub_ofs)
                       (Cerr_stk_alloc "check_valid: the region is partial") in
-    ok {| sr_region := sr.(sr_region); sr_zone := sub_ofs |}.
-(* Ça simplifierait l'énoncé et la preuve de check_vpkP. *)
+    ok sr'.
 *)
 
 Definition check_vpk_word rmap x vpk ofs ws :=
@@ -784,7 +720,7 @@ Definition is_stack_ptr vpk :=
 
 (* Not so elegant: function [addr_from_vpk] can fail, but it
    actually fails only on the [Pstkptr] case, that is treated apart.
-   Function [mk_addr_pexpr] should never fail, but this is not checked statically.
+   Thus function [mk_addr_pexpr] never fails, but this is not checked statically.
 *)
 Definition mk_addr_pexpr rmap x vpk :=
   if is_stack_ptr vpk is Some (s, ofs, ws, z, f) then
@@ -865,6 +801,7 @@ Definition alloc_array_move rmap r e :=
   end.
 
 (* This function is also defined in array_init.v *)
+(* TODO: clean *)
 Definition is_array_init e := 
   match e with
   | Parr_init _ => true
@@ -936,7 +873,6 @@ Record stk_alloc_oracle_t :=
   ; sao_to_save: seq (var * Z)
   ; sao_rsp: saved_stack
   ; sao_return_address: return_address_location
-  (* TODO : new field max_stack_size : maximal size of the stack needed to execute properly the program *)
   }.
 
 Section PROG.
@@ -962,11 +898,14 @@ Definition set_clear_bytes rv sr ofs len :=
   let bm := clear_bytes_map i bm in
   Mr.set rv sr.(sr_region) bm.
 
-Definition set_clear rmap sr ofs len :=
+Definition set_clear_pure rmap sr ofs len :=
   {| var_region := rmap.(var_region);
      region_var := set_clear_bytes rmap sr ofs len |}.
 
-(* TODO: srs.1 or srs.2 -> I think both are correct *)
+Definition set_clear rmap sr ofs len :=
+  Let _ := writable sr.(sr_region) in
+  ok (set_clear_pure rmap sr ofs len).
+
 (* We clear the arguments. This is not necessary in the classic case, because
    we also clear them when assigning the results in alloc_call_res
    (this works if each writable reg ptr is returned (which is currently
@@ -976,13 +915,17 @@ Definition set_clear rmap sr ofs len :=
    checks in stack_alloc to be valid. Thus, for the sake of simplicity, it was
    decided to make the clearing of the arguments twice : here and in
    alloc_call_res.
-   Actually, clearing in alloc_call_arg partially enforces that the arguments correspond
-   to disjoint regions, so we could maybe simplify check_all_disj.
-   We could for instance check the validity and clear the writable regions,
-   and then check that the non-writable are still valid.
-   TODO: the error message was much clearer before (disjoint regions while now it is just
-   check_valid failed...)
-   TODO: we could test writable in set_clear, like in set_sub_region
+
+   We use two rmaps:
+   - the initial rmap [rmap0] is used to check the validity of the sub-regions;
+   - the current rmap [rmap] is [rmap0] with all the previous writable sub-regions cleared.
+   Actually, we could use [rmap] to check the validity, and that would partially
+   enforce that the arguments correspond to disjoint regions (in particular,
+   writable sub-regions are pairwise disjoint), so with this version we could
+   simplify check_all_disj. If we first check the validity and clear the writable regions,
+   and then check the validity of the non-writable ones, we can even remove [check_all_disj].
+   But the error message (disjoint regions) is much clearer when we have [check_all_disj],
+   so I leave it as it is now.
 *)
 Definition alloc_call_arg_aux rmap0 rmap (sao_param: option param_info) (e:pexpr) := 
   Let x := get_Pvar e in
@@ -997,8 +940,7 @@ Definition alloc_call_arg_aux rmap0 rmap (sao_param: option param_info) (e:pexpr
   | Some pi, Some (Pregptr p) => 
     Let srs := Region.check_valid rmap0 xv (Some 0%Z) (size_slot xv) in
     let sr := srs.1 in
-    Let _  := if pi.(pp_writable) then writable sr.(sr_region) else ok tt in
-    let rmap := if pi.(pp_writable) then set_clear rmap sr (Some 0%Z) (size_slot xv) else rmap in
+    Let rmap := if pi.(pp_writable) then set_clear rmap sr (Some 0%Z) (size_slot xv) else ok rmap in
     Let _  := check_align sr pi.(pp_align) in
     ok (rmap, (Some (pi.(pp_writable),sr), Pvar (mk_lvar (with_var xv p))))
   | Some _, _ => cerror "the argument should be a reg ptr" 
@@ -1056,12 +998,6 @@ Definition get_regptr (x:var_i) :=
   | _ => cerror "variable should be a reg ptr" 
   end.
 
-Definition get_Lvar lv := 
-  match lv with
-  | Lvar x => ok x
-  | _      => cerror "get_Lvar variable expected"
-  end.
-
 Definition alloc_lval_call (srs:seq (option (bool * sub_region) * pexpr)) rmap (r: lval) (i:option nat) :=
   match i with
   | None => 
@@ -1070,12 +1006,18 @@ Definition alloc_lval_call (srs:seq (option (bool * sub_region) * pexpr)) rmap (
   | Some i => 
     match nth (None, Pconst 0) srs i with
     | (Some (_,sr), _) =>
-      Let x := get_Lvar r in
-      Let p := get_regptr x in
-      Let rmap := Region.set_arr_call rmap (v_var x) sr in
-      (* TODO: Lvar p or Lvar (with_var x p) like in alloc_call_arg? *)
-      ok (rmap, Lvar p)
-    | (None, _) => cerror "alloc_r_call : please report"
+      match r with
+      | Lnone i _ => ok (rmap, Lnone i (sword Uptr))
+      | Lvar x =>
+        Let p := get_regptr x in
+        Let rmap := Region.set_arr_call rmap (v_var x) sr in
+        (* TODO: Lvar p or Lvar (with_var x p) like in alloc_call_arg? *)
+        ok (rmap, Lvar p)
+      | Laset aa ws x e1 => cerror "array assignement in lval of a call"
+      | Lasub aa ws len x e1 => cerror "sub array assignement in lval of a call"
+      | Lmem ws x e1     => cerror "call result should be stored in reg ptr"
+      end
+    | (None, _) => cerror "alloc_lval_call : please report"
     end
   end.
 
@@ -1153,7 +1095,6 @@ End PROG.
 
 End Section.
 
-(* TODO: the check Mvar.get mglob is needed for the proof only. Can it be removed ? *)
 Definition init_stack_layout fn (mglob : Mvar.t (Z * wsize)) sao := 
   let add (xsr: var * wsize * Z) 
           (slp:  Mvar.t (Z * wsize) * Z) :=
@@ -1176,71 +1117,67 @@ Definition init_stack_layout fn (mglob : Mvar.t (Z * wsize)) sao :=
   if (size <= sao.(sao_size))%CMP then ok stack
   else cferror fn "stack size, please report".
 
-(* TODO: extract the inner function ? *)
-(* TODO: I test if sao_slots contain duplicates. Not sure if this is required
-   for correctness. Maybe the same pb with parameters, but how to get
-   Pregptr there ?
-*)
-Definition init_local_map vrip vrsp fn globals stack sao := 
-  let add_alloc (xpk:var * ptr_kind_init) (lrx: Mvar.t ptr_kind * region_map * Sv.t) :=
-    let '(locals, rmap, sv) := lrx in
-    let '(x, pk) := xpk in
-    if Sv.mem x sv then cferror fn "invalid reg pointer, please report"
-    else if Mvar.get locals x is Some _ then
-      cferror fn "the oracle returned two results for the same var, please report"
-    else
-      Let svrmap := 
-        match pk with
-        | PIdirect x' z sc =>
-          let vars := if sc is Slocal then stack else globals in
-          match Mvar.get vars x' with
-          | None => cferror fn "unknown region, please report"
-          | Some (ofs', ws') =>
-            if [&& (size_slot x <= z.(z_len))%CMP, (0%Z <= z.(z_ofs))%CMP &
-                   ((z.(z_ofs) + z.(z_len))%Z <= size_slot x')%CMP] then
-              let rmap :=
-                if sc is Slocal then
-                  let sr := sub_region_stack x' ws' z in
-                  Region.set_arr_init rmap x sr
-                else
-                  rmap
-              in
-              ok (sv, Pdirect x' ofs' ws' z sc, rmap)
-            else cferror fn "invalid slot, please report"
-          end
-        | PIstkptr x' z xp =>
-          if ~~ is_sarr x.(vtype) then
-            cferror fn "a stk ptr variable should be an array, please report"
-          else
-          match Mvar.get stack x' with
-          | None => cferror fn "unknown stack region, please report"
-          | Some (ofs', ws') =>
-            if Sv.mem xp sv then cferror fn "invalid stk ptr (not uniq), please report"
-            else if xp == x then cferror fn "a pseudo-var is equal to a program var, please report"
-            else if Mvar.get locals xp is Some _ then cferror fn "a pseudo-var is equal to a program var, please report"
-            else                
-              if [&& (Uptr <= ws')%CMP,
-                  (0%Z <= z.(z_ofs))%CMP,
-                  (Z.land z.(z_ofs) (wsize_size U64 - 1) == 0)%Z,
-                  (wsize_size Uptr <= z.(z_len))%CMP &
-                  ((z.(z_ofs) + z.(z_len))%Z <= size_slot x')%CMP] then
-                ok (Sv.add xp sv, Pstkptr x' ofs' ws' z xp, rmap)
-            else cferror fn "invalid ptr kind, please report"
-          end
-        | PIregptr p => 
-          if ~~ is_sarr x.(vtype) then
-            cferror fn "a reg ptr variable should be an array, please report"
-          else
-          if Sv.mem p sv then cferror fn "invalid reg pointer already exists, please report"
-          else if Mvar.get locals p is Some _ then cferror fn "a pointer is equal to a program var, please report"
-          else if vtype p != sword Uptr then cferror fn "invalid pointer type, please report"
-          else ok (Sv.add p sv, Pregptr p, rmap) 
-        end in
-      let '(sv,pk, rmap) := svrmap in
-      let locals := Mvar.set locals x pk in
-      ok (locals, rmap, sv) in
+Definition add_alloc fn globals stack (xpk:var * ptr_kind_init) (lrx: Mvar.t ptr_kind * region_map * Sv.t) :=
+  let '(locals, rmap, sv) := lrx in
+  let '(x, pk) := xpk in
+  if Sv.mem x sv then cferror fn "invalid reg pointer, please report"
+  else if Mvar.get locals x is Some _ then
+    cferror fn "the oracle returned two results for the same var, please report"
+  else
+    Let svrmap := 
+      match pk with
+      | PIdirect x' z sc =>
+        let vars := if sc is Slocal then stack else globals in
+        match Mvar.get vars x' with
+        | None => cferror fn "unknown region, please report"
+        | Some (ofs', ws') =>
+          if [&& (size_slot x <= z.(z_len))%CMP, (0%Z <= z.(z_ofs))%CMP &
+                 ((z.(z_ofs) + z.(z_len))%Z <= size_slot x')%CMP] then
+            let rmap :=
+              if sc is Slocal then
+                let sr := sub_region_stack x' ws' z in
+                Region.set_arr_init rmap x sr
+              else
+                rmap
+            in
+            ok (sv, Pdirect x' ofs' ws' z sc, rmap)
+          else cferror fn "invalid slot, please report"
+        end
+      | PIstkptr x' z xp =>
+        if ~~ is_sarr x.(vtype) then
+          cferror fn "a stk ptr variable should be an array, please report"
+        else
+        match Mvar.get stack x' with
+        | None => cferror fn "unknown stack region, please report"
+        | Some (ofs', ws') =>
+          if Sv.mem xp sv then cferror fn "invalid stk ptr (not uniq), please report"
+          else if xp == x then cferror fn "a pseudo-var is equal to a program var, please report"
+          else if Mvar.get locals xp is Some _ then cferror fn "a pseudo-var is equal to a program var, please report"
+          else                
+            if [&& (Uptr <= ws')%CMP,
+                (0%Z <= z.(z_ofs))%CMP,
+                (Z.land z.(z_ofs) (wsize_size U64 - 1) == 0)%Z,
+                (wsize_size Uptr <= z.(z_len))%CMP &
+                ((z.(z_ofs) + z.(z_len))%Z <= size_slot x')%CMP] then
+              ok (Sv.add xp sv, Pstkptr x' ofs' ws' z xp, rmap)
+          else cferror fn "invalid ptr kind, please report"
+        end
+      | PIregptr p => 
+        if ~~ is_sarr x.(vtype) then
+          cferror fn "a reg ptr variable should be an array, please report"
+        else
+        if Sv.mem p sv then cferror fn "invalid reg pointer already exists, please report"
+        else if Mvar.get locals p is Some _ then cferror fn "a pointer is equal to a program var, please report"
+        else if vtype p != sword Uptr then cferror fn "invalid pointer type, please report"
+        else ok (Sv.add p sv, Pregptr p, rmap) 
+      end in
+    let '(sv,pk, rmap) := svrmap in
+    let locals := Mvar.set locals x pk in
+    ok (locals, rmap, sv).
+
+Definition init_local_map vrip vrsp fn globals stack sao :=
   let sv := Sv.add vrip (Sv.add vrsp Sv.empty) in
-  Let aux := foldM add_alloc (Mvar.empty _, Region.empty, sv) sao.(sao_alloc) in
+  Let aux := foldM (add_alloc fn globals stack) (Mvar.empty _, Region.empty, sv) sao.(sao_alloc) in
   let '(locals, rmap, sv) := aux in
   ok (locals, rmap, sv).
 
@@ -1263,8 +1200,6 @@ Definition init_local_map vrip vrsp fn globals stack sao :=
         5/ Reg allocation
 *)
 
-(* TODO: srs.1 or srs.2 -> I think both are correct *)
-(* TODO: vtype == vtype could by size_slot == size_slot *)
 Definition check_result pmap rmap paramsi params oi (x:var_i) :=
   match oi with
   | Some i =>
@@ -1300,12 +1235,7 @@ Definition check_results pmap rmap paramsi params ret_pos res :=
   mapM2 (Cerr_stk_alloc "invalid function info:please report")
         (check_result pmap rmap paramsi params) ret_pos res.
 
-(* TODO: remove set_full ? *)
-Definition sub_region_full x r :=
-  let z := {| z_ofs := 0; z_len := size_slot x |} in
-  {| sr_region := r; sr_zone := z |}.
-
-(* is duplicate region the best error msg ? *)
+(* TODO: is duplicate region the best error msg ? *)
 Definition init_param (mglob stack : Mvar.t (Z * wsize)) accu pi (x:var_i) := 
   let: (disj, lmap, rmap) := accu in
   Let _ := assert (~~ Sv.mem x disj) (Cerr_stk_alloc "a parameter already exists, please report") in
@@ -1381,7 +1311,6 @@ Definition alloc_fd_aux p_extra mglob (local_alloc: funname -> stk_alloc_oracle_
     f_res := res;
     f_extra := f_extra fd |}.
 
-(* TODO: when calling function, check sth about sao_max_size *)
 Definition alloc_fd p_extra mglob (local_alloc: funname -> stk_alloc_oracle_t) (f: ufun_decl) :=
   let: sao := local_alloc f.1 in
   Let fd := alloc_fd_aux p_extra mglob local_alloc sao f in
@@ -1396,7 +1325,6 @@ Definition alloc_fd p_extra mglob (local_alloc: funname -> stk_alloc_oracle_t) (
       |} in
   ok (f.1, swith_extra fd f_extra). 
 
-(* TODO: use read and/or LE.wread8 ? *)
 Definition check_glob (m: Mvar.t (Z*wsize)) (data:seq u8) (gd:glob_decl) := 
   let x := gd.1 in
   match Mvar.get m x with

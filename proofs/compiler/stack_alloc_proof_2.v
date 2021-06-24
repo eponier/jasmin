@@ -50,359 +50,6 @@ Local Open Scope Z_scope.
 
 Import Region.
 
-Lemma alloc_free_stack_stable m1 ws sz sz' m2 m2' m3 :
-  alloc_stack_spec m1 ws sz sz' m2 ->
-  stack_stable m2 m2' ->
-  free_stack_spec m2' m3 ->
-  stack_stable m1 m3.
-Proof.
-  move=> hass hss hfss.
-  split.
-  + by rewrite hfss.(fss_root) -hss.(ss_root) hass.(ass_root).
-  + by rewrite hfss.(fss_limit) -hss.(ss_limit) hass.(ass_limit).
-  by rewrite hfss.(fss_frames) -hss.(ss_frames) hass.(ass_frames).
-Qed.
-
-Lemma alloc_free_validw_stable m1 ws sz sz' m2 m2' m3 :
-  alloc_stack_spec m1 ws sz sz' m2 ->
-  stack_stable m2 m2' ->
-  validw m2 =2 validw m2' ->
-  free_stack_spec m2' m3 ->
-  validw m1 =2 validw m3.
-Proof.
-  move=> hass hss hvalid hfss.
-  move=> p ws'.
-  congr (_ && _).
-  apply: all_ziota => i hi.
-  rewrite !valid8_validw.
-  rewrite hfss.(fss_valid) -hvalid hass.(ass_valid).
-  rewrite -hss.(ss_top_stack) -(alloc_free_stack_stable hass hss hfss).(ss_top_stack).
-  rewrite /pointer_range.
-  have [L H] := ass_above_limit hass.
-  case: (@andP (_ <=? _)%Z); rewrite !zify.
-  - case => ptr_i_lo ptr_i_hi.
-    rewrite andbF; apply/negbTE; apply: stack_region_is_free.
-    split; last exact: ptr_i_hi.
-    etransitivity; last exact: ptr_i_lo.
-    exact: L.
-  rewrite andbT => ptr_not_fresh.
-  set X := (X in _ || X).
-  suff /negbTE -> : ~~ X; first by rewrite orbF.
-  subst X; rewrite !zify => - [].
-  change (wsize_size U8) with 1%Z.
-  move => ptr_i_lo ptr_i_hi.
-  apply: ptr_not_fresh.
-  split; first exact: ptr_i_lo.
-  move: H ptr_i_hi; clear => n.
-  lia.
-Qed.
-
-(* TODO: move (psem_facts ?) *)
-(* sem_stack_stable and sem_validw_stable both for uprog and sprog *)
-(* TODO: see if we can share some proofs between this and what is in sem_one_varmap_facts *)
-Section VALIDW_STABLE. (* taken from sem_one_varmap_facts *)
-
-Context {T:eqType} {pT:progT T} {sCP: semCallParams}.
-
-Variable P : prog.
-Variable ev : extra_val_t.
-
-Definition mem_equiv m1 m2 := stack_stable m1 m2 /\ validw m1 =2 validw m2.
-Infix "≡" := mem_equiv (at level 40).
-
-Hypothesis finalize_cancel_init : forall s1 s2 m2 ef,
-  init_state ef P.(p_extra) ev s1 = ok s2 ->
-  emem s2 ≡ m2 ->
-  emem s1 ≡ finalize ef m2.
-
-Instance mem_equiv_trans : Transitive mem_equiv.
-Proof.
-  move => m1 m2 m3 [hss1 hvalid1] [hss2 hvalid2].
-  split; first by transitivity m2.
-  by move=> p ws; transitivity (validw m2 p ws).
-Qed.
-
-Lemma write_lval_validw gd x v s s' :
-  write_lval gd x v s = ok s' ->
-  validw (emem s) =2 validw (emem s').
-Proof.
-  case: x => /=.
-  - by move => _ ty /write_noneP [] <-.
-  - by move => x /write_var_emem <-.
-  - t_xrbindP => /= ????? ?? ?? ? ? ? ? ? h <- /=.
-    by move=> ??; rewrite (write_validw_eq h).
-  - move => aa sz x e.
-    by apply: on_arr_varP; t_xrbindP => ?????????????? <-.
-  move => aa sz ty x e.
-  by apply: on_arr_varP; t_xrbindP => ?????????????? <-.
-Qed.
-
-Lemma write_lvals_validw gd xs vs s s' :
-  write_lvals gd s xs vs = ok s' ->
-  validw (emem s) =2 validw (emem s').
-Proof.
-  elim: xs vs s.
-  - by case => // ? [] ->.
-  move => x xs ih [] // v vs s /=; t_xrbindP => ? /write_lval_validw h /ih.
-  by move=> h1 p ws; rewrite h h1.
-Qed.
-
-Let Pc s1 (_: cmd) s2 : Prop := emem s1 ≡ emem s2.
-Let Pi s1 (_: instr) s2 : Prop := emem s1 ≡ emem s2.
-Let Pi_r s1 (_: instr_r) s2 : Prop := emem s1 ≡ emem s2.
-Let Pfor (_: var_i) (_: seq Z) s1 (_: cmd) s2 : Prop := emem s1 ≡ emem s2.
-Let Pfun m1 (_: funname) (_: seq value) m2 (_: seq value) : Prop := m1 ≡ m2.
-
-Lemma mem_equiv_nil : sem_Ind_nil Pc.
-Proof. by []. Qed.
-
-Lemma mem_equiv_cons : sem_Ind_cons P ev Pc Pi.
-Proof. by move => x y z i c _ xy _ yz; red; etransitivity; eassumption. Qed.
-
-Lemma mem_equiv_mkI : sem_Ind_mkI P ev Pi_r Pi.
-Proof. by []. Qed.
-
-Lemma mem_equiv_assgn : sem_Ind_assgn P Pi_r.
-Proof. by move => s1 s2 x tg ty e v v' ok_v ok_v' /dup[] /write_lval_validw ? /write_lval_stack_stable. Qed.
-
-Lemma mem_equiv_opn : sem_Ind_opn P Pi_r.
-Proof. by move => s1 s2 tg op xs es; rewrite /sem_sopn; t_xrbindP => ???? /dup[] /write_lvals_validw ? /write_lvals_stack_stable. Qed.
-
-Lemma mem_equiv_if_true : sem_Ind_if_true P ev Pc Pi_r.
-Proof. by []. Qed.
-
-Lemma mem_equiv_if_false : sem_Ind_if_false P ev Pc Pi_r.
-Proof. by []. Qed.
-
-Lemma mem_equiv_while_true : sem_Ind_while_true P ev Pc Pi_r.
-Proof.
-  move => s1 s2 s3 s4 aa c e c' _ A _ _ B _ C; red.
-  etransitivity; first exact: A.
-  etransitivity; first exact: B.
-  exact: C.
-Qed.
-
-Lemma mem_equiv_while_false : sem_Ind_while_false P ev Pc Pi_r.
-Proof. by []. Qed.
-
-Lemma mem_equiv_for : sem_Ind_for P ev Pi_r Pfor.
-Proof. by []. Qed.
-
-Lemma mem_equiv_for_nil : sem_Ind_for_nil Pfor.
-Proof. by []. Qed.
-
-Lemma mem_equiv_for_cons : sem_Ind_for_cons P ev Pc Pfor.
-Proof.
-  move => ???????? /write_var_emem A _ B _ C; red.
-  rewrite A; etransitivity; [ exact: B | exact: C ].
-Qed.
-
-Lemma mem_equiv_call : sem_Ind_call P ev Pi_r Pfun.
-Proof. move=> s1 m2 s2 ii xs fn args vargs vres _ _ ? /dup[] /write_lvals_validw ? /write_lvals_stack_stable ?; red; etransitivity; [|split]; eassumption. Qed.
-
-Lemma mem_equiv_proc : sem_Ind_proc P ev Pc Pfun.
-Proof.
-  move=> m1 m2 fn fd vargs vargs' s0 s1 s2 vres vres' ok_fd ok_vargs ok_s0 ok_s1 _ Hc _ _ ->.
-  rewrite /Pc -(write_vars_emem ok_s1) in Hc.
-  by apply (finalize_cancel_init ok_s0 Hc).
-Qed.
-
-Lemma sem_mem_equiv s1 c s2 :
-  sem P ev s1 c s2 → emem s1 ≡ emem s2.
-Proof.
-  by apply
-    (@sem_Ind _ _ _ _ _ Pc Pi_r Pi Pfor Pfun
-              mem_equiv_nil
-              mem_equiv_cons
-              mem_equiv_mkI
-              mem_equiv_assgn
-              mem_equiv_opn
-              mem_equiv_if_true
-              mem_equiv_if_false
-              mem_equiv_while_true
-              mem_equiv_while_false
-              mem_equiv_for
-              mem_equiv_for_nil
-              mem_equiv_for_cons
-              mem_equiv_call
-              mem_equiv_proc).
-Qed.
-
-Lemma sem_I_mem_equiv s1 i s2 :
-  sem_I P ev s1 i s2 → emem s1 ≡ emem s2.
-Proof.
-  by apply
-    (@sem_I_Ind _ _ _ _ _ Pc Pi_r Pi Pfor Pfun
-                mem_equiv_nil
-                mem_equiv_cons
-                mem_equiv_mkI
-                mem_equiv_assgn
-                mem_equiv_opn
-                mem_equiv_if_true
-                mem_equiv_if_false
-                mem_equiv_while_true
-                mem_equiv_while_false
-                mem_equiv_for
-                mem_equiv_for_nil
-                mem_equiv_for_cons
-                mem_equiv_call
-                mem_equiv_proc).
-Qed.
-
-Lemma sem_i_mem_equiv s1 i s2 :
-  sem_i P ev s1 i s2 → emem s1 ≡ emem s2.
-Proof.
-  by apply
-    (@sem_i_Ind _ _ _ _ _ Pc Pi_r Pi Pfor Pfun
-                mem_equiv_nil
-                mem_equiv_cons
-                mem_equiv_mkI
-                mem_equiv_assgn
-                mem_equiv_opn
-                mem_equiv_if_true
-                mem_equiv_if_false
-                mem_equiv_while_true
-                mem_equiv_while_false
-                mem_equiv_for
-                mem_equiv_for_nil
-                mem_equiv_for_cons
-                mem_equiv_call
-                mem_equiv_proc).
-Qed.
-
-Lemma sem_call_mem_equiv m1 fn vargs m2 vres :
-  sem_call P ev m1 fn vargs m2 vres → m1 ≡ m2.
-Proof.
-  by apply
-    (@sem_call_Ind _ _ _ _ _ Pc Pi_r Pi Pfor Pfun
-                   mem_equiv_nil
-                   mem_equiv_cons
-                   mem_equiv_mkI
-                   mem_equiv_assgn
-                   mem_equiv_opn
-                   mem_equiv_if_true
-                   mem_equiv_if_false
-                   mem_equiv_while_true
-                   mem_equiv_while_false
-                   mem_equiv_for
-                   mem_equiv_for_nil
-                   mem_equiv_for_cons
-                   mem_equiv_call
-                   mem_equiv_proc).
-Qed.
-
-End VALIDW_STABLE.
-
-Lemma sem_stack_stable_uprog (p : uprog) (ev : unit) s1 c s2 :
-  sem p ev s1 c s2 -> stack_stable (emem s1) (emem s2).
-Proof.
-  apply sem_mem_equiv => {s1 c s2}.
-  by move=> s1 s2 m2 ef /= [<-].
-Qed.
-
-Lemma sem_validw_stable_uprog (p : uprog) (ev : unit) s1 c s2 :
-  sem p ev s1 c s2 → validw (emem s1) =2 validw (emem s2).
-Proof.
-  apply sem_mem_equiv => {s1 c s2}.
-  by move=> s1 s2 m2 ef /= [<-].
-Qed.
-
-Lemma sem_i_validw_stable_uprog (p : uprog) (ev : unit) s1 c s2 :
-  sem_i p ev s1 c s2 → validw (emem s1) =2 validw (emem s2).
-Proof.
-  apply sem_i_mem_equiv => {s1 c s2}.
-  by move=> s1 s2 m2 ef /= [<-].
-Qed.
-
-Lemma sem_I_validw_stable_uprog (p : uprog) (ev : unit) s1 c s2 :
-  sem_I p ev s1 c s2 → validw (emem s1) =2 validw (emem s2).
-Proof.
-  apply sem_I_mem_equiv => {s1 c s2}.
-  by move=> s1 s2 m2 ef /= [<-].
-Qed.
-
-Lemma sem_call_validw_stable_uprog (p : uprog) (ev : unit) m1 fn vargs m2 vres :
-  sem_call p ev m1 fn vargs m2 vres ->
-  validw m1 =2 validw m2.
-Proof.
-  apply sem_call_mem_equiv => {m1 fn vargs m2 vres}.
-  by move=> s1 s2 m2 ef /= [<-].
-Qed.
-
-(* Already proved in psem_facts as [sem_stack_stable] *)
-Lemma sem_stack_stable_sprog (p : sprog) (gd : ptr) s1 c s2 :
-  sem p gd s1 c s2 -> stack_stable (emem s1) (emem s2).
-Proof.
-  apply sem_mem_equiv => {s1 c s2}.
-  move=> s1 s2 m2 ef /=; rewrite /init_stk_state /finalize_stk_mem.
-  t_xrbindP=> m1 /Memory.alloc_stackP hass [<-] /= [hss hvalid].
-  have hfss := Memory.free_stackP m2.
-  split.
-  + by apply (alloc_free_stack_stable hass hss hfss).
-  by apply (alloc_free_validw_stable hass hss hvalid).
-Qed.
-
-Lemma sem_call_stack_stable_sprog (p : sprog) (gd : ptr) m1 fn vargs m2 vres :
-  sem_call p gd m1 fn vargs m2 vres -> stack_stable m1 m2.
-Proof.
-  apply sem_call_mem_equiv => {m1 fn vargs m2 vres}.
-  move=> s1 s2 m2 ef /=; rewrite /init_stk_state /finalize_stk_mem.
-  t_xrbindP=> m1 /Memory.alloc_stackP hass [<-] /= [hss hvalid].
-  have hfss := Memory.free_stackP m2.
-  split.
-  + by apply (alloc_free_stack_stable hass hss hfss).
-  by apply (alloc_free_validw_stable hass hss hvalid).
-Qed.
-
-Lemma sem_validw_stable_sprog (p : sprog) (gd : ptr) s1 c s2 :
-  sem p gd s1 c s2 → validw (emem s1) =2 validw (emem s2).
-Proof.
-  apply sem_mem_equiv => {s1 c s2}.
-  move=> s1 s2 m2 ef /=; rewrite /init_stk_state /finalize_stk_mem.
-  t_xrbindP=> m1 /Memory.alloc_stackP hass [<-] /= [hss hvalid].
-  have hfss := Memory.free_stackP m2.
-  split.
-  + by apply (alloc_free_stack_stable hass hss hfss).
-  by apply (alloc_free_validw_stable hass hss hvalid).
-Qed.
-
-Lemma sem_i_validw_stable_sprog (p : sprog) (gd : ptr) s1 c s2 :
-  sem_i p gd s1 c s2 → validw (emem s1) =2 validw (emem s2).
-Proof.
-  apply sem_i_mem_equiv => {s1 c s2}.
-  move=> s1 s2 m2 ef /=; rewrite /init_stk_state /finalize_stk_mem.
-  t_xrbindP=> m1 /Memory.alloc_stackP hass [<-] /= [hss hvalid].
-  have hfss := Memory.free_stackP m2.
-  split.
-  + by apply (alloc_free_stack_stable hass hss hfss).
-  by apply (alloc_free_validw_stable hass hss hvalid).
-Qed.
-
-Lemma sem_I_validw_stable_sprog (p : sprog) (gd : ptr) s1 c s2 :
-  sem_I p gd s1 c s2 → validw (emem s1) =2 validw (emem s2).
-Proof.
-  apply sem_I_mem_equiv => {s1 c s2}.
-  move=> s1 s2 m2 ef /=; rewrite /init_stk_state /finalize_stk_mem.
-  t_xrbindP=> m1 /Memory.alloc_stackP hass [<-] /= [hss hvalid].
-  have hfss := Memory.free_stackP m2.
-  split.
-  + by apply (alloc_free_stack_stable hass hss hfss).
-  by apply (alloc_free_validw_stable hass hss hvalid).
-Qed.
-
-Lemma sem_call_validw_stable_sprog (p : sprog) (gd : ptr) m1 fn vargs m2 vres :
-  sem_call p gd m1 fn vargs m2 vres ->
-  validw m1 =2 validw m2.
-Proof.
-  apply sem_call_mem_equiv => {m1 fn vargs m2 vres}.
-  move=> s1 s2 m2 ef /=; rewrite /init_stk_state /finalize_stk_mem.
-  t_xrbindP=> m1 /Memory.alloc_stackP hass [<-] /= [hss hvalid].
-  have hfss := Memory.free_stackP m2.
-  split.
-  + by apply (alloc_free_stack_stable hass hss hfss).
-  by apply (alloc_free_validw_stable hass hss hvalid).
-Qed.
-
 (* When the boolean is set to false, some checks are disable. On the Coq side,
    we want to perform all the checks, so we set it to true.
 *)
@@ -939,72 +586,6 @@ Variable locals2 : Mvar.t ptr_kind.
 Variable rmap2 : region_map.
 Variable alloc_params : seq (option sub_region * var_i).
 Hypothesis hparams : init_params mglob stack vnew1 locals1 rmap1 sao.(sao_params) params = ok (vnew2, locals2, rmap2, alloc_params).
-
-Definition add_alloc fn stack globals' (xpk:var * ptr_kind_init) (lrx: Mvar.t ptr_kind * region_map * Sv.t) :=
-  let '(locals, rmap, sv) := lrx in
-  let '(x, pk) := xpk in
-  if Sv.mem x sv then stack_alloc.cferror fn "invalid reg pointer, please report"%string
-  else if Mvar.get locals x is Some _ then
-    stack_alloc.cferror fn "the oracle returned two results for the same var, please report"%string
-  else
-    Let svrmap := 
-      match pk with
-      | PIdirect x' z sc =>
-        let vars := if sc is Slocal then stack else globals' in
-        match Mvar.get vars x' with
-        | None => stack_alloc.cferror fn "unknown region, please report"%string
-        | Some (ofs', ws') =>
-          if [&& (size_slot x <= z.(z_len))%CMP, (0%Z <= z.(z_ofs))%CMP &
-                 ((z.(z_ofs) + z.(z_len))%Z <= size_slot x')%CMP] then
-            let rmap :=
-              if sc is Slocal then
-                let sr := sub_region_stack x' ws' z in
-                Region.set_arr_init rmap x sr
-              else
-                rmap
-            in
-            ok (sv, Pdirect x' ofs' ws' z sc, rmap)
-          else stack_alloc.cferror fn "invalid slot, please report"%string
-        end
-      | PIstkptr x' z xp =>
-        if ~~ is_sarr x.(vtype) then
-          stack_alloc.cferror fn "a stk ptr variable should be an array, please report"%string
-        else
-        match Mvar.get stack x' with
-        | None => stack_alloc.cferror fn "unknown stack region, please report"%string
-        | Some (ofs', ws') =>
-          if Sv.mem xp sv then stack_alloc.cferror fn "invalid stk ptr (not uniq), please report"%string
-          else if xp == x then stack_alloc.cferror fn "a pseudo-var is equal to a program var, please report"%string
-          else if Mvar.get locals xp is Some _ then stack_alloc.cferror fn "a pseudo-var is equal to a program var, please report"%string
-          else
-            if [&& (Uptr <= ws')%CMP,
-                (0%Z <= z.(z_ofs))%CMP,
-                (Z.land z.(z_ofs) (wsize_size U64 - 1) == 0)%Z,
-                (wsize_size Uptr <= z.(z_len))%CMP &
-                ((z.(z_ofs) + z.(z_len))%Z <= size_slot x')%CMP] then
-              ok (Sv.add xp sv, Pstkptr x' ofs' ws' z xp, rmap)
-          else stack_alloc.cferror fn "invalid ptr kind, please report"%string
-        end
-      | PIregptr p => 
-        if ~~ is_sarr x.(vtype) then
-          stack_alloc.cferror fn "a reg ptr variable should be an array, please report"%string
-        else
-        if Sv.mem p sv then stack_alloc.cferror fn "invalid reg pointer already exists, please report"%string
-        else if Mvar.get locals p is Some _ then stack_alloc.cferror fn "a pointer is equal to a program var, please report"%string
-        else if vtype p != sword Uptr then stack_alloc.cferror fn "invalid pointer type, please report"%string
-        else ok (Sv.add p sv, Pregptr p, rmap) 
-      end in
-    let '(sv,pk, rmap) := svrmap in
-    let locals := Mvar.set locals x pk in
-    ok (locals, rmap, sv).
-
-Lemma init_local_map_eq :
-  init_local_map vrip0 vrsp0 fn mglob stack sao =
-    let sv := Sv.add vrip0 (Sv.add vrsp0 Sv.empty) in
-    Let aux := foldM (add_alloc fn stack mglob) (Mvar.empty _, Region.empty, sv) sao.(sao_alloc) in
-    let '(locals, rmap, sv) := aux in
-    ok (locals, rmap, sv).
-Proof. done. Qed.
 
 Lemma uniq_param_tuples : uniq (map fst param_tuples).
 Proof.
@@ -1556,7 +1137,7 @@ Proof.
 Qed.
 
 Lemma add_alloc_wf_pmap locals1' rmap1' vnew1' x pki locals2' rmap2' vnew2' :
-  add_alloc fn stack mglob (x, pki) (locals1', rmap1', vnew1') = ok (locals2', rmap2', vnew2') ->
+  add_alloc fn mglob stack (x, pki) (locals1', rmap1', vnew1') = ok (locals2', rmap2', vnew2') ->
   wf_pmap (lmap locals1' vnew1') rsp rip Slots Addr Writable Align ->
   wf_pmap (lmap locals2' vnew2') rsp rip Slots Addr Writable Align.
 Proof.
@@ -1717,7 +1298,7 @@ Qed.
 
 Lemma add_alloc_wf_rmap locals1' rmap1' vnew1' x pki locals2' rmap2' vnew2' s2 :
   wf_pmap (lmap locals1' vnew1') rsp rip Slots Addr Writable Align ->
-  add_alloc fn stack mglob (x, pki) (locals1', rmap1', vnew1') = ok (locals2', rmap2', vnew2') ->
+  add_alloc fn mglob stack (x, pki) (locals1', rmap1', vnew1') = ok (locals2', rmap2', vnew2') ->
   let: s1 := {| emem := m1; evm := vmap0 |} in
   wf_rmap (lmap locals1' vnew1') Slots Addr Writable Align P rmap1' s1 s2 ->
   wf_rmap (lmap locals2' vnew2') Slots Addr Writable Align P rmap2' s1 s2.
@@ -1807,7 +1388,7 @@ Qed.
 Lemma init_local_map_wf_pmap :
   wf_pmap (lmap locals1 vnew1) rsp rip Slots Addr Writable Align.
 Proof.
-  move: hlocal_map; rewrite init_local_map_eq /=.
+  move: hlocal_map; rewrite /init_local_map.
   set wf_pmap := wf_pmap. (* hack due to typeclass interacting badly *)
   t_xrbindP=> -[[locals1' rmap1'] vnew1'] hfold [???]; subst locals1' rmap1' vnew1'.
   move: hfold.
@@ -1833,7 +1414,7 @@ Lemma init_local_map_wf_rmap s2 :
   wf_rmap (lmap locals1 vnew1) Slots Addr Writable Align P rmap1 s1 s2.
 Proof.
   move=> heqvalg.
-  move: hlocal_map; rewrite init_local_map_eq /=.
+  move: hlocal_map; rewrite /init_local_map.
   set wf_rmap := wf_rmap. (* hack due to typeclass interacting badly *)
   t_xrbindP=> -[[locals1' rmap1'] vnew1'] hfold [???]; subst locals1' rmap1' vnew1'.
   move: hfold.
@@ -2021,8 +1602,6 @@ Qed.
 Lemma valid_state_init_params m0 vm1 vm2 :
   let: s1 := {| emem := m1; evm := vm1 |} in
   let: s2 := {| emem := m2; evm := vm2 |} in
-(*   (forall i, 0 <= i < glob_size ->
-    read (emem s2) (rip + wrepr U64 i)%R U8 = ok (nth 0%R global_data (Z.to_nat i))) -> *)
   valid_state (lmap locals1 vnew1) glob_size rsp rip Slots Addr Writable Align P rmap1 m0 s1 s2 ->
   forall s1',
   write_vars params vargs1 s1 = ok s1' ->
@@ -2700,7 +2279,7 @@ Proof.
   move=> s1 s2 s3 i c hhi Hi hhc Hc pmap rsp Slots Addr Writable Align rmap1 rmap3 c1 hpmap hwf sao /=.
   t_xrbindP => -[rmap2 i'] hi {rmap3} [rmap3 c'] hc /= <- <- m0 s1' hv hext hsao.
   have [s2' [si hv2]]:= Hi _ _ _ _ _ _ _ _ _ hpmap hwf _ hi _ _ hv hext hsao.
-  have hsao2 := stack_stable_wf_sao (sem_I_stack_stable si) hsao.
+  have hsao2 := stack_stable_wf_sao (sem_I_stack_stable_sprog si) hsao.
   have hext2 := valid_state_extend_mem hwf hv hext hv2 (sem_I_validw_stable_uprog hhi) (sem_I_validw_stable_sprog si).
   have [s3' [sc hv3]]:= Hc _ _ _ _ _ _ _ _ _ hpmap hwf _ hc _ _ hv2 hext2 hsao2.
   by exists s3'; split => //; apply: Eseq; [exact: si|exact: sc].
@@ -2783,11 +2362,11 @@ Proof.
   subst i2 ii1 rmap3 rmap4 i' rmap7 rmap8 e1 c11 c22 => m0 s1' /(valid_state_incl hincl1) hv hext hsao.
   have [s2' [hs1 hv2]]:= Hc1 _ _ _ _ _ _ _ _ _ hpmap hwf _ hc1 _ _ hv hext hsao.
   have := alloc_eP hwf.(wfsl_no_overflow) hwf.(wfsl_align) hpmap hv2 he Hv; rewrite -P'_globs => he'.
-  have hsao2 := stack_stable_wf_sao (sem_stack_stable hs1) hsao.
+  have hsao2 := stack_stable_wf_sao (sem_stack_stable_sprog hs1) hsao.
   have hext2 := valid_state_extend_mem hwf hv hext hv2 (sem_validw_stable_uprog hhi) (sem_validw_stable_sprog hs1).
   have [s3' [hs2 /(valid_state_incl hincl2) hv3]]:= Hc2 _ _ _ _ _ _ _ _ _ hpmap hwf _ hc2 _ _ hv2 hext2 hsao2.
   have /= := Hwhile _ _ _ _ _ _ rmap5 rmap2 ii2 ii2 (Cwhile a c1' e' c2') hpmap hwf sao.
-  have hsao3 := stack_stable_wf_sao (sem_stack_stable hs2) hsao2.
+  have hsao3 := stack_stable_wf_sao (sem_stack_stable_sprog hs2) hsao2.
   have hext3 := valid_state_extend_mem hwf hv2 hext2 hv3 (sem_validw_stable_uprog hhi2) (sem_validw_stable_sprog hs2).
   rewrite Loop.nbP /= hc1 /= he /= hc2 /= hincl2 /= => /(_ erefl _ _ hv3 hext3 hsao3) [s4'] [hs3 hv4].
   by exists s4';split => //; apply: Ewhile_true; eassumption.
@@ -2981,7 +2560,7 @@ Qed.
 
 (* TODO: move *)
 Lemma disjointi_set_clear rmap sr ofs len x :
-  disjointi (get_var_bytes (set_clear rmap sr ofs len) sr.(sr_region) x) (interval_of_zone (sub_zone_at_ofs sr.(sr_zone) ofs len)).
+  disjointi (get_var_bytes (set_clear_pure rmap sr ofs len) sr.(sr_region) x) (interval_of_zone (sub_zone_at_ofs sr.(sr_zone) ofs len)).
 Proof.
   rewrite get_var_bytes_set_clear_bytes eq_refl /=.
   apply /disjointiP => n.
