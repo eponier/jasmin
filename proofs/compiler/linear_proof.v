@@ -44,7 +44,7 @@ Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
-Lemma wunsigned_sub_small (p: pointer) (n: Z) :
+Lemma wunsigned_sub_small (p: ptr) (n: Z) :
   (0 <= n < wbase Uptr →
    wunsigned (p - wrepr Uptr n) <= wunsigned p →
    wunsigned (p - wrepr Uptr n) = wunsigned p - n)%Z.
@@ -858,12 +858,12 @@ Section PROOF.
     have hr2 := write_read8 Hw'' p1. move: Hr2. rewrite hr2 hr1 /=.
     case: ifP=> // _. by apply H1. 
   (* valid *)
-  + move=> p1 Hv. have Hv1 := (CoreMem.write_validw p1 U8 Hw).
-    have Hv2 := (CoreMem.write_validw p1 U8 Hw''). rewrite Hv2.
+  + move=> p1 Hv. have Hv1 := (CoreMem.write_validw_eq Hw).
+    have Hv2 := (CoreMem.write_validw_eq Hw''). rewrite Hv2.
     apply H2. by rewrite -Hv1.
   (* stack *)
-  move=> p1 H. have Hv1 := (CoreMem.write_validw p1 U8 Hw).
-  have Hv2 := (CoreMem.write_validw p1 U8 Hw''). rewrite Hv2.
+  move=> p1 H. have Hv1 := (CoreMem.write_validw_eq Hw).
+  have Hv2 := (CoreMem.write_validw_eq Hw''). rewrite Hv2.
   apply H3. have Hst := write_mem_stable Hw. case: Hst.
   by move=> -> -> _.
   Qed.
@@ -909,7 +909,7 @@ Section PROOF.
     move => /(_ w) [] m' ok_m'; exists m'; first exact: ok_m'.
     split.
     - move => x y ok_y.
-      rewrite (writeP_neq ok_m'); first exact: Hrm.
+      rewrite (CoreMem.writeP_neq ok_m'); first exact: Hrm.
       move => i j [] i_low i_hi; change (wsize_size U8) with 1%Z => j_range.
       have ? : j = 0%Z by lia.
       subst j => { j_range }.
@@ -920,7 +920,7 @@ Section PROOF.
       have := wunsigned_range a.
       generalize (wunsigned_range (top_stack m)).
       lia.
-    1-2: move => b; rewrite (CoreMem.write_validw _ _ ok_m').
+    1-2: move => b; rewrite (CoreMem.write_validw_eq ok_m').
     - exact/Hvm.
     exact/Hs.
   Qed.
@@ -1001,15 +1001,15 @@ Section PROOF.
 
   (** Export functions allocate their own stack frames
   * whereas internal functions have their frame allocated by the caller *)
-  Definition is_sp_for_call (fn: funname) (m: mem) (p: ptr) : Prop :=
+  Definition is_sp_for_call (fn: funname) (m: mem) (p': ptr) : Prop :=
     exists2 fd,
     get_fundef (p_funcs p) fn = Some fd &
     let e := fd.(f_extra) in
     if e.(sf_return_address) is RAnone
-    then ptr = top_stack m
+    then p' = top_stack m
     else
       is_align (top_stack m) e.(sf_align) ∧
-      let sz := stack_frame_allocation_size e in ptr = (top_stack m - wrepr Uptr sz)%R.
+      let sz := stack_frame_allocation_size e in p' = (top_stack m - wrepr Uptr sz)%R.
 
   Definition value_of_ra (m: mem) (vm: vmap) (ra: return_address_location) (target: option (remote_label * lcmd * nat)) : Prop :=
     match ra, target with
@@ -1030,7 +1030,7 @@ Section PROOF.
 
   (* Execution of linear programs preserve meta-data stored in the stack memory *)
   Definition preserved_metadata (m m1 m2: mem) : Prop :=
-    ∀ p : pointer,
+    ∀ p : ptr,
       (wunsigned (top_stack m) <= wunsigned p < wunsigned (stack_root m))%Z →
       ~~ validw m p U8 →
       read m1 p U8 = read m2 p U8.
@@ -1077,7 +1077,7 @@ Section PROOF.
       rewrite (value_uincl_word ev_ev' ok_ofs) /=.
       t_xrbindP => w' ok_w' tm' ok_tm' <-{t'} /=.
       move => ptr ptr_range /negP ptr_not_valid.
-      rewrite (writeP_neq ok_tm'); first reflexivity.
+      rewrite (CoreMem.writeP_neq ok_tm'); first reflexivity.
       apply: disjoint_range_U8 => i i_range ?; subst ptr.
       apply: ptr_not_valid.
       rewrite -valid8_validw.
@@ -1811,7 +1811,7 @@ Let vrsp : var := vid (string_of_register RSP).
       have := alloc_stackP ok_m.
       clear - ok_m ok_m1' ok_stk_sz z_pos z_bound sp_aligned => A a [] a_lo a_hi _.
       have top_range := ass_above_limit A.
-      rewrite (writeP_neq ok_m1'); first reflexivity.
+      rewrite (CoreMem.writeP_neq ok_m1'); first reflexivity.
       apply: disjoint_range_U8 => i i_range ? {ok_m1'}; subst a.
       move: a_lo {a_hi}.
       rewrite (top_stack_after_aligned_alloc _ sp_aligned) -/(stack_frame_allocation_size (f_extra fd')).

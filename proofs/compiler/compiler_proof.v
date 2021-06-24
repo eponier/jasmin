@@ -144,7 +144,7 @@ Proof.
   by rewrite h.
 Qed.
 
-Lemma compiler_third_partP entries (p: sprog) (p': sprog) (gd: pointer) m fn va m' vr :
+Lemma compiler_third_partP entries (p: sprog) (p': sprog) (gd: ptr) m fn va m' vr :
   compiler_third_part cparams entries p = ok p' →
   fn \in entries →
   psem.sem_call p gd m fn va m' vr →
