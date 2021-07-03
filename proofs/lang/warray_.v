@@ -109,7 +109,7 @@ Module WArray.
   Lemma arr_is_align i ws :
     is_align (wrepr Uptr i) ws = is_align i ws.
   Proof.
-    by rewrite /is_align p_to_zE memory_model.p_to_zE wunsigned_repr mod_wsize_size.
+    by rewrite /is_align p_to_zE memory_model.p_to_zE wunsigned_repr mod_wbase_wsize_size.
   Qed.
 
   Section CM.
@@ -414,6 +414,11 @@ Module WArray.
     case: andP; rewrite !zify //= => ?; case: andP; rewrite !zify //= => ?; lia.
   Qed.
 
+  Lemma set_sub_bound aa ws lena a len p t a' :
+    @set_sub lena aa ws len a p t = ok a' ->
+    0 <= p * mk_scale aa ws /\ p * mk_scale aa ws + arr_size ws len <= lena.
+  Proof. by rewrite /set_sub; case: ifP => //; rewrite !zify. Qed.
+
   Lemma get_sub_data_get8 aa ws a len p k: 
     Mz.get (get_sub_data aa ws len a p) k = 
       let start := (p * mk_scale aa ws)%Z in
@@ -446,6 +451,11 @@ Module WArray.
     rewrite -!get_read8 /memory_model.get /= /get8 /is_init /in_bound get_sub_data_get8 /=.
     case: andP; rewrite !zify //= => ?; case: andP; rewrite !zify //= => ?; lia.
   Qed.
+
+  Lemma get_sub_bound aa ws lena a len p a' :
+    @get_sub lena aa ws len a p = ok a' ->
+    0 <= p * mk_scale aa ws /\ p * mk_scale aa ws + arr_size ws len <= lena.
+  Proof. by rewrite /get_sub; case: ifP => //; rewrite !zify. Qed.
 
   Lemma uincl_get_sub {len1 len2} (a1 : array len1) (a2 : array len2) 
       aa ws len i t1 :

@@ -1874,7 +1874,7 @@ Let vrsp : var := vid (string_of_register RSP).
         case/and3P: ok_save_stack => /eqP sf_align_1 /eqP stk_sz_0 /eqP stk_extra_sz_0.
         have top_stack_preserved : top_stack m1' = top_stack (s1: mem).
         + rewrite (alloc_stack_top_stack ok_m1') sf_align_1.
-          rewrite Memory.top_stack_after_aligned_alloc.
+          rewrite top_stack_after_aligned_alloc.
           2: exact: is_align8.
           by rewrite stk_sz_0 stk_extra_sz_0 -addE add_0.
         have X' : vm_uincl (set_RSP m1' (kill_flags s1 rflags)) vm1.

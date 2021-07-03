@@ -39,7 +39,9 @@ Unset Printing Implicit Defensive.
 Local Open Scope vmap.
 Local Open Scope seq_scope.
 
-(* TODO: could [wsize_size] return a [positive] rather than a [Z]? *)
+(* TODO: could [wsize_size] return a [positive] rather than a [Z]?
+   If so, [size_of] could return a positive too.
+*)
 Definition size_of (t:stype) :=
   match t with
   | sword sz => wsize_size sz
