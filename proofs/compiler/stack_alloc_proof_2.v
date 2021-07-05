@@ -1,11 +1,3 @@
-(* This file is the second part of [stack_alloc_proof.v] that was split to
-   ease the development process. The split is not unnatural, since it
-   corresponds to the end of a section.
-
-   Though, it remains to decide whether we will fusion the two
-   files back once the main proof effort has been completed.
-*)
-
 (* ** License
  * -----------------------------------------------------------------------
  * Copyright 2016--2017 IMDEA Software Institute
@@ -30,6 +22,10 @@
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  * ----------------------------------------------------------------------- *)
+
+(* This file is the second part of [stack_alloc_proof.v] that was split to
+   ease the development process.
+*)
 
 (* ** Imports and settings *)
 From mathcomp Require Import all_ssreflect all_algebra.
@@ -524,9 +520,9 @@ Qed.
 
 
 Variable vripn : Ident.ident.
-Let vrip0 := {| vtype := sptr; vname := vripn |}.
+Let vrip0 := {| vtype := spointer; vname := vripn |}.
 Variable vrspn : Ident.ident.
-Let vrsp0 := {| vtype := sptr; vname := vrspn |}.
+Let vrsp0 := {| vtype := spointer; vname := vrspn |}.
 Variable locals1 : Mvar.t ptr_kind.
 Variable rmap1 : region_map.
 Variable vnew1 : Sv.t.
@@ -717,7 +713,7 @@ Qed.
 Hypothesis Hdisjoint_zrange_locals :
   Forall3 (fun opi varg1 varg2 =>
     forall pi, opi = Some pi ->
-    forall (p:ptr), varg2 = Vword p ->
+    forall (p:pointer), varg2 = Vword p ->
     0 < sao.(sao_size) ->
     disjoint_zrange rsp sao.(sao_size) p (size_val varg1)) sao.(sao_params) vargs1 vargs2.
 
@@ -1533,7 +1529,7 @@ Proof.
 Qed.
 
 (* [m2] is (at least) [m1] augmented with data [data] at address [rip]. *)
-Record extend_mem (m1 m2:mem) (rip:ptr) (data:seq u8) := {
+Record extend_mem (m1 m2:mem) (rip:pointer) (data:seq u8) := {
   em_no_overflow : no_overflow rip (Z.of_nat (size data));
     (* [rip] is able to store a block large enough *)
   em_align       : is_align rip U256;
@@ -2573,7 +2569,7 @@ Proof.
     by apply: (no_overflow_incl hb).
   have hdisj_locals_params:
     Forall3 (fun opi varg1 varg2 => forall pi, opi = Some pi ->
-      forall (p:ptr), varg2 = Vword p -> 0 < (local_alloc fn).(sao_size) -> disjoint_zrange rsp (local_alloc fn).(sao_size) p (size_val varg1))
+      forall (p:pointer), varg2 = Vword p -> 0 < (local_alloc fn).(sao_size) -> disjoint_zrange rsp (local_alloc fn).(sao_size) p (size_val varg1))
     (sao_params (local_alloc fn)) vargs1' vargs2'.
   + apply: Forall3_impl hargs'.
     move=> opi varg1 varg2 harg pi ? p ? hlt; subst opi varg2.

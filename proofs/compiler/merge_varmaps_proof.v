@@ -99,7 +99,7 @@ Proof. move => x y z xy yz r hr; apply: (eval_uincl_trans (xy _ hr)); exact: yz.
 
 Section PROG.
 
-Context (p: sprog) (extra_free_registers: instr_info → option var) (global_data: ptr).
+Context (p: sprog) (extra_free_registers: instr_info → option var) (global_data: pointer).
 
 Definition valid_writefun (w: funname → Sv.t) (f: sfun_decl) : bool :=
   Sv.subset (write_fd p extra_free_registers w f.2) (w f.1).

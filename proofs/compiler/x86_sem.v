@@ -64,7 +64,7 @@ Record xprog : Type :=
 Record x86_mem : Type := X86Mem {
   xmem : mem;
   xreg : regmap;
-  xrip : ptr;
+  xrip : pointer;
   xxreg: xregmap;
   xrf  : rflagmap;
 }.
@@ -169,14 +169,14 @@ Definition st_get_rflag (rf : rflag) (s : x86_mem) :=
 
 (* -------------------------------------------------------------------- *)
 
-Definition decode_reg_addr (s : x86_mem) (a : reg_address) : ptr := nosimpl (
+Definition decode_reg_addr (s : x86_mem) (a : reg_address) : pointer := nosimpl (
   let: disp   := a.(ad_disp) in
   let: base   := odflt 0%R (Option.map (s.(xreg)) a.(ad_base)) in
   let: scale  := word_of_scale a.(ad_scale) in
   let: offset := odflt 0%R (Option.map (s.(xreg)) a.(ad_offset)) in
   disp + base + scale * offset)%R.
 
-Definition decode_addr (s:x86_mem) (a:address) : ptr := 
+Definition decode_addr (s:x86_mem) (a:address) : pointer := 
   match a with
   | Areg ra => decode_reg_addr s ra
   | Arip ofs => (s.(xrip) + ofs)%R
@@ -244,7 +244,7 @@ Definition mem_write_rflag (s : x86_mem) (f:rflag) (b:option bool) :=
    |}.
 
 (* -------------------------------------------------------------------- *)
-Definition mem_write_mem (l : ptr) sz (w : word sz) (s : x86_mem) :=
+Definition mem_write_mem (l : pointer) sz (w : word sz) (s : x86_mem) :=
   Let m := write s.(xmem) l w in ok
   {| xmem := m;
      xreg := s.(xreg);
@@ -432,7 +432,7 @@ End PROG.
 (* TODO: flags may be preserved *)
 (* TODO: restore stack pointer of caller? *)
 (*
-Variant x86sem_fd (P: xprog) (wrip: ptr) fn st st' : Prop :=
+Variant x86sem_fd (P: xprog) (wrip: pointer) fn st st' : Prop :=
 | X86Sem_fd fd mp st2
    `(get_fundef P.(xp_funcs) fn = Some fd)
    `(alloc_stack st.(xmem) fd.(xfd_align) fd.(xfd_stk_size) = ok mp)

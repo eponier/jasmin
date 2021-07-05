@@ -44,7 +44,7 @@ Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
-Lemma wunsigned_sub_small (p: ptr) (n: Z) :
+Lemma wunsigned_sub_small (p: pointer) (n: Z) :
   (0 <= n < wbase Uptr →
    wunsigned (p - wrepr Uptr n) <= wunsigned p →
    wunsigned (p - wrepr Uptr n) = wunsigned p - n)%Z.
@@ -1001,15 +1001,15 @@ Section PROOF.
 
   (** Export functions allocate their own stack frames
   * whereas internal functions have their frame allocated by the caller *)
-  Definition is_sp_for_call (fn: funname) (m: mem) (p': ptr) : Prop :=
+  Definition is_sp_for_call (fn: funname) (m: mem) (ptr: pointer) : Prop :=
     exists2 fd,
     get_fundef (p_funcs p) fn = Some fd &
     let e := fd.(f_extra) in
     if e.(sf_return_address) is RAnone
-    then p' = top_stack m
+    then ptr = top_stack m
     else
       is_align (top_stack m) e.(sf_align) ∧
-      let sz := stack_frame_allocation_size e in p' = (top_stack m - wrepr Uptr sz)%R.
+      let sz := stack_frame_allocation_size e in ptr = (top_stack m - wrepr Uptr sz)%R.
 
   Definition value_of_ra (m: mem) (vm: vmap) (ra: return_address_location) (target: option (remote_label * lcmd * nat)) : Prop :=
     match ra, target with
@@ -1030,7 +1030,7 @@ Section PROOF.
 
   (* Execution of linear programs preserve meta-data stored in the stack memory *)
   Definition preserved_metadata (m m1 m2: mem) : Prop :=
-    ∀ p : ptr,
+    ∀ p : pointer,
       (wunsigned (top_stack m) <= wunsigned p < wunsigned (stack_root m))%Z →
       ~~ validw m p U8 →
       read m1 p U8 = read m2 p U8.

@@ -343,7 +343,7 @@ Proof.
   by move=> s1 s2 m2 ef /= [<-].
 Qed.
 
-Lemma sem_stack_stable_sprog (p : sprog) (gd : ptr) s1 c s2 :
+Lemma sem_stack_stable_sprog (p : sprog) (gd : pointer) s1 c s2 :
   sem p gd s1 c s2 -> stack_stable (emem s1) (emem s2).
 Proof.
   apply sem_mem_equiv => {s1 c s2}.
@@ -355,7 +355,7 @@ Proof.
   by apply (alloc_free_validw_stable hass hss hvalid).
 Qed.
 
-Lemma sem_validw_stable_sprog (p : sprog) (gd : ptr) s1 c s2 :
+Lemma sem_validw_stable_sprog (p : sprog) (gd : pointer) s1 c s2 :
   sem p gd s1 c s2 -> validw (emem s1) =2 validw (emem s2).
 Proof.
   apply sem_mem_equiv => {s1 c s2}.
@@ -367,7 +367,7 @@ Proof.
   by apply (alloc_free_validw_stable hass hss hvalid).
 Qed.
 
-Lemma sem_i_stack_stable_sprog (p : sprog) (gd : ptr) s1 c s2 :
+Lemma sem_i_stack_stable_sprog (p : sprog) (gd : pointer) s1 c s2 :
   sem_i p gd s1 c s2 -> stack_stable (emem s1) (emem s2).
 Proof.
   apply sem_i_mem_equiv => {s1 c s2}.
@@ -379,7 +379,7 @@ Proof.
   by apply (alloc_free_validw_stable hass hss hvalid).
 Qed.
 
-Lemma sem_i_validw_stable_sprog (p : sprog) (gd : ptr) s1 c s2 :
+Lemma sem_i_validw_stable_sprog (p : sprog) (gd : pointer) s1 c s2 :
   sem_i p gd s1 c s2 -> validw (emem s1) =2 validw (emem s2).
 Proof.
   apply sem_i_mem_equiv => {s1 c s2}.
@@ -391,7 +391,7 @@ Proof.
   by apply (alloc_free_validw_stable hass hss hvalid).
 Qed.
 
-Lemma sem_I_stack_stable_sprog (p : sprog) (gd : ptr) s1 c s2 :
+Lemma sem_I_stack_stable_sprog (p : sprog) (gd : pointer) s1 c s2 :
   sem_I p gd s1 c s2 -> stack_stable (emem s1) (emem s2).
 Proof.
   apply sem_I_mem_equiv => {s1 c s2}.
@@ -403,7 +403,7 @@ Proof.
   by apply (alloc_free_validw_stable hass hss hvalid).
 Qed.
 
-Lemma sem_I_validw_stable_sprog (p : sprog) (gd : ptr) s1 c s2 :
+Lemma sem_I_validw_stable_sprog (p : sprog) (gd : pointer) s1 c s2 :
   sem_I p gd s1 c s2 -> validw (emem s1) =2 validw (emem s2).
 Proof.
   apply sem_I_mem_equiv => {s1 c s2}.
@@ -415,7 +415,7 @@ Proof.
   by apply (alloc_free_validw_stable hass hss hvalid).
 Qed.
 
-Lemma sem_call_stack_stable_sprog (p : sprog) (gd : ptr) m1 fn vargs m2 vres :
+Lemma sem_call_stack_stable_sprog (p : sprog) (gd : pointer) m1 fn vargs m2 vres :
   sem_call p gd m1 fn vargs m2 vres -> stack_stable m1 m2.
 Proof.
   apply sem_call_mem_equiv => {m1 fn vargs m2 vres}.
@@ -427,7 +427,7 @@ Proof.
   by apply (alloc_free_validw_stable hass hss hvalid).
 Qed.
 
-Lemma sem_call_validw_stable_sprog (p : sprog) (gd : ptr) m1 fn vargs m2 vres :
+Lemma sem_call_validw_stable_sprog (p : sprog) (gd : pointer) m1 fn vargs m2 vres :
   sem_call p gd m1 fn vargs m2 vres ->
   validw m1 =2 validw m2.
 Proof.

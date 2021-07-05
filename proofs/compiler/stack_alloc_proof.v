@@ -65,15 +65,15 @@ Qed.
    Uptr is defined in memory_model, no stype there
    stype is defined in type, no Uptr there
 *)
-Notation sptr := (sword Uptr) (only parsing).
+Notation spointer := (sword Uptr) (only parsing).
 
 Section Section.
 
 Variables (pmap:pos_map) (glob_size:Z).
-Variables (rsp rip: ptr).
+Variables (rsp rip: pointer).
 
 Variable (Slots : Sv.t).
-Variable (Addr : slot -> ptr).
+Variable (Addr : slot -> pointer).
 Variable (Writable : slot -> bool).
 Variable (Align : slot -> wsize).
 
@@ -164,7 +164,7 @@ Record wf_direct (x : var) (s : slot) ofs ws z sc := {
 
 Record wf_regptr x xr := {
   wfr_type : is_sarr (vtype x);
-  wfr_rtype : vtype xr = sptr;
+  wfr_rtype : vtype xr = spointer;
   wfr_not_vrip : xr <> pmap.(vrip);
   wfr_not_vrsp : xr <> pmap.(vrsp);
   wfr_new : Sv.In xr pmap.(vnew);
@@ -926,7 +926,7 @@ Section EXPR.
 
   Lemma sub_region_stkptr_wf y sl ofs ws z f :
     wf_stkptr y sl ofs ws z f ->
-    wf_sub_region (sub_region_stkptr sl ws z) sptr.
+    wf_sub_region (sub_region_stkptr sl ws z) spointer.
   Proof. by case. Qed.
 
   Lemma check_vpkP x vpk ofs len sr sr' :

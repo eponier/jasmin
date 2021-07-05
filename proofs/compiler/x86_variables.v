@@ -398,7 +398,7 @@ Proof.
 Qed.
 
 (* -------------------------------------------------------------------- *)
-Definition scale_of_z' ii (z:ptr) :=
+Definition scale_of_z' ii (z:pointer) :=
   match wunsigned z with
   | 1 => ok Scale1
   | 2 => ok Scale2

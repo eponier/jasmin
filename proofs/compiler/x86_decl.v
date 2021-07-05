@@ -53,8 +53,8 @@ Definition remote_label := (funname * label)%type.
   The encoding and decoding functions are parameterized by a domain:
   they are assumed to succeed on this domain only.
 *)
-Parameter encode_label : seq remote_label → remote_label → option ptr.
-Parameter decode_label : seq remote_label → ptr → option remote_label.
+Parameter encode_label : seq remote_label → remote_label → option pointer.
+Parameter decode_label : seq remote_label → pointer → option remote_label.
 Axiom decode_encode_label : ∀ dom lbl, obind (decode_label dom) (encode_label dom lbl) = Some lbl.
 Axiom encode_label_dom : ∀ dom lbl, lbl \in dom → encode_label dom lbl ≠ None.
 
@@ -79,7 +79,7 @@ Variant rflag : Type := CF | PF | ZF | SF | OF | DF.
 Variant scale : Type := Scale1 | Scale2 | Scale4 | Scale8.
 
 (* -------------------------------------------------------------------- *)
-Coercion word_of_scale (s : scale) : ptr :=
+Coercion word_of_scale (s : scale) : pointer :=
   wrepr Uptr match s with
   | Scale1 => 1
   | Scale2 => 2
@@ -90,17 +90,17 @@ Coercion word_of_scale (s : scale) : ptr :=
 (* -------------------------------------------------------------------- *)
 (* disp + base + scale × offset *)
 Record reg_address : Type := mkAddress {
-  ad_disp   : ptr;
+  ad_disp   : pointer;
   ad_base   : option register;
   ad_scale  : scale;
   ad_offset : option register;
 }.
 
-Definition rip_address := ptr.
+Definition rip_address := pointer.
 
 Inductive address := 
   | Areg of reg_address
-  | Arip of ptr. 
+  | Arip of pointer. 
 
 (* -------------------------------------------------------------------- *)
 Variant condt : Type :=
