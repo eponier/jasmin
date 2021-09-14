@@ -673,7 +673,7 @@ let check_sig_lvs loc sig_ lvs =
 
   List.iter2
     (fun ty (loc, _, lty) -> lty
-      |> oiter (fun lty -> check_ty_eq ~loc ~from:ty ~to_:lty))
+      |> oiter (fun lty -> check_ty_eq ~loc ~from:lty ~to_:ty))
      sig_ lvs;
 
   List.map2 (fun ty (_,flv,_) -> flv ty) sig_ lvs
@@ -1217,7 +1217,7 @@ let tt_param pd (env : 'asm Env.env) _loc (pp : S.pparam) : 'asm Env.env =
   let ty = tt_type pd env pp.ppa_ty in
   let pe, ety = tt_expr ~mode:`OnlyParam pd env pp.S.ppa_init in
 
-  check_ty_eq ~loc:(L.loc pp.ppa_init) ~from:ty ~to_:ety;
+  check_ty_eq ~loc:(L.loc pp.ppa_init) ~from:ety ~to_:ty;
 
   let x = P.PV.mk (L.unloc pp.ppa_name) P.Const ty (L.loc pp.ppa_name) [] in
   let env = Env.Vars.push_param env (x,pe) in
@@ -1602,6 +1602,7 @@ let cassgn_for (x: P.plval) (tg: E.assgn_tag) (ty: P.pty) (e: P.pexpr) :
   (P.pexpr, unit, 'asm) P.ginstr_r =
   Cassgn (x, tg, ty, e)
 
+(* this is dead code *)
 let rec is_constant e = 
   match e with 
   | P.Pconst _ | P.Pbool _ | P.Parr_init _ -> true
