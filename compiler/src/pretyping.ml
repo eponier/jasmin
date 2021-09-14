@@ -1837,11 +1837,16 @@ let tt_call_conv loc params returns cc =
 
   | Some `Export ->
     let check s x = 
-      if (L.unloc x).P.v_kind <> Reg(Normal, Direct) then 
-        rs_tyerror ~loc:(L.loc x) 
+      let xv = L.unloc x in
+      if xv.P.v_kind <> Reg (Normal, Direct) then
+        rs_tyerror ~loc:(L.loc x)
           (string_error "%a has kind %a, only reg are allowed in %s of export function"
-            Printer.pp_pvar (L.unloc x)
-            Printer.pp_kind (L.unloc x).P.v_kind s) in
+            Printer.pp_pvar xv
+            Printer.pp_kind xv.P.v_kind s)
+      else if P.is_ty_arr xv.P.v_ty then
+        rs_tyerror ~loc:(L.loc x)
+          (string_error "array is not allowed in %s of export function" s)
+    in
     List.iter (check "parameter") params;
     List.iter (check "result") returns;
     if 2 < List.length returns then
@@ -1850,11 +1855,16 @@ let tt_call_conv loc params returns cc =
 
   | None         -> 
     let check s x =
-      if not (P.is_reg_kind (L.unloc x).P.v_kind) then 
-        rs_tyerror ~loc:(L.loc x) 
+      let xv = L.unloc x in
+      if not (P.is_reg_kind xv.P.v_kind) then
+        rs_tyerror ~loc:(L.loc x)
           (string_error "%a has kind %a, only reg or reg ptr are allowed in %s of non inlined function"
-            Printer.pp_pvar (L.unloc x)
-            Printer.pp_kind (L.unloc x).P.v_kind s) in
+            Printer.pp_pvar xv
+            Printer.pp_kind xv.P.v_kind s)
+      else if not (P.is_ptr xv.P.v_kind) && P.is_ty_arr xv.P.v_ty then
+        rs_tyerror ~loc:(L.loc x)
+          (string_error "reg array is not allowed in %s of non inlined function" s)
+    in
     List.iter (check "parameter") params;
     List.iter (check "result") returns;
     let returned_params =

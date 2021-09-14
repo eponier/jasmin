@@ -34,7 +34,7 @@ Module Import E.
     pel_ii := None;
     pel_vi := None;
     pel_pass := Some pass;
-    pel_internal := false
+    pel_internal := true
   |}.
 
   Definition reg_ierror (x:var_i) msg := {|

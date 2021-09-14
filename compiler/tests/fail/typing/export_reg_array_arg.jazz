@@ -1,0 +1,2 @@
+export fn main (reg u64[2] a) {
+}
