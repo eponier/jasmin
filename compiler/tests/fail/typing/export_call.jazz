@@ -1,0 +1,9 @@
+export fn f () -> reg u32, reg u32 {
+  reg u32 res;
+  return res, res;
+}
+
+fn main () {
+  reg u64 res;
+  _, _ = f();
+}
