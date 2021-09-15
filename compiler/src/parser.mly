@@ -195,7 +195,7 @@ prim:
 | MINUS e=pexpr { `Sub, e }
 
 %inline mem_access:
-| ct=parens(utype)? LBRACKET v=var e=mem_ofs? RBRACKET 
+| LBRACKET ct=utype? v=var e=mem_ofs? RBRACKET
   { ct, v, e }
   
 arr_access_len: 
