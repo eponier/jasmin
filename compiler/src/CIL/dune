@@ -1,0 +1,8 @@
+(library
+  (name jasmin_coq)
+  (libraries extraction_lib)
+  (wrapped false)
+  (flags -w "-a")
+  (package jasmin))
+
+(include_subdirs no)

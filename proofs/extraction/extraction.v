@@ -18,10 +18,6 @@ Extraction Inline utils.assert.
 Extraction Inline utils.Result.bind.
 Extraction Inline Datatypes.implb.
 
-Extract Constant strings.ascii_beq => "Char.equal".
-Extract Constant strings.ascii_cmp =>
-  "(fun x y -> let c = Char.compare x y in if c = 0 then Datatypes.Eq else if c < 0 then Datatypes.Lt else Datatypes.Gt)".
-
 Extract Constant expr.VarInfo.t => "Location.t".
 Extract Constant expr.VarInfo.witness => "Location._dummy".
 Extract Constant expr.var_info => "Location.t".

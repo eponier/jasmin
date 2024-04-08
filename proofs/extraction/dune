@@ -6,95 +6,143 @@
   (flags -w -extraction-reserved-identifier
          -w -extraction-opaque-accessed)
   (extracted_modules
-    BinInt
-    BinNat
-    BinNums
-    Datatypes
-    eqtype
-    Specif
-    ssrfun
-    var0
-
-    oseq
-    seq_extra
-    xseq
-    arch_decl
-    arch_extra
-    arch_utils
-    asm_gen
-    label
-    sem_params_of_arch_extra
-    allocation
-    arch_params
-    arm_decl
-    arm_extra
-    arm_instr_decl
-    arm_lowering
-    arm_params
-    arm_params_common
-    arm_params_core
-    arm_stack_zeroization
-    arm
-    array_expansion
-    array_copy
-    array_init
-    byteset
-    compiler_util
-    compiler
-    constant_prop
-    dead_calls
-    dead_code
-    inline
-    lea
-    linear_util
-    linearization
-    lowering
-    lower_spill
-    makeReferenceArguments
-    merge_varmaps
-    propagate_inline
-    remove_globals
-    slh_lowering
-    stack_alloc
-    stack_zeroization
-    tunneling
-    unionfind
-    unrolling
-    x86_decl
-    x86_extra
-    x86_instr_decl
-    x86_lowering
-    x86_params
-    x86_stack_zeroization
-    x86
-    expr
-    fexpr
-    flag_combination
-    gen_map
-    global
-    ident
-    linear
-    low_memory
-    memory_example
-    memory_model
-    one_varmap
-    psem_defs
-    pseudo_operator
-    sem_op_typed
-    sem_params
-    sem_type
-    shift_kind
-    sopn
-    slh_ops
-    stack_zero_strategy
-    strings
-    syscall
-    syscall_sem
-    tagged
-    type
-    values
-    varmap
-    waes
-    warray_
-    word
-    wsize))
+allocation
+arch_decl
+arch_extra
+arch_params
+arch_utils
+arm_decl
+arm_extra
+arm_instr_decl
+arm_lowering
+arm
+arm_params_common
+arm_params_core
+arm_params
+arm_stack_zeroization
+array_copy
+array_expansion
+array_init
+Ascii
+asm_gen
+bigop
+BinInt
+BinNat
+BinNums
+BinPosDef
+BinPos
+Bool
+byteset
+choice
+CMorphisms
+compiler
+compiler_util
+constant_prop
+CRelationClasses
+Datatypes
+dead_calls
+dead_code
+DecidableType
+div
+EqdepFacts
+eqtype
+Equalities
+expr
+fexpr
+finfun
+fintype
+flag_combination
+FMapAVL
+FMapFacts
+FMapList
+gen_map
+global
+Hexadecimal
+HexadecimalString
+ident
+Init
+inline
+Int
+label
+lea
+linearization
+linear
+linear_util
+List0
+lowering
+lower_spill
+low_memory
+makeReferenceArguments
+memory_example
+memory_model
+merge_varmaps
+MSetDecide
+MSetEqProperties
+MSetFacts
+MSetInterface
+MSetProperties
+Nat0
+one_varmap
+OrderedType
+order
+Orders
+OrdersTac
+oseq
+PeanoNat
+PrimInt63
+propagate_inline
+psem_defs
+pseudo_operator
+remove_globals
+sem_op_typed
+sem_params
+sem_params_of_arch_extra
+sem_type
+seq_extra
+seq
+shift_kind
+slh_lowering
+slh_ops
+sopn
+Specif
+ssralg
+ssrbool
+ssreflect
+ssrfun0
+ssrfun
+ssrint
+ssrnat
+ssrnum
+stack_alloc
+stack_zeroization
+stack_zero_strategy
+String0
+strings
+Sumbool
+syscall
+syscall_sem
+tagged
+tunneling
+tuple
+type
+unionfind
+unrolling
+utils0
+values
+var0
+varmap
+waes
+warray_
+word0
+word
+word_ssrZ
+wsize
+x86_decl
+x86_extra
+x86_instr_decl
+x86_lowering
+x86
+x86_params
+x86_stack_zeroization
+xseq
+Zpower))

@@ -1,0 +1,12 @@
+(library
+  (name extraction_lib)
+  (libraries zarith batteries pre_CIL)
+  (package jasmin)
+  (wrapped false))
+
+(rule
+ (targets uint63.ml)
+ (deps (:gen-file uint63_%{ocaml-config:int_size}.ml))
+ (action (copy# %{gen-file} %{targets})))
+
+(include_subdirs no)

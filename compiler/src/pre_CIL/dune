@@ -1,0 +1,7 @@
+(library
+  (name pre_CIL)
+  (flags -w "-a")
+  (package jasmin)
+  (wrapped false))
+
+(include_subdirs no)

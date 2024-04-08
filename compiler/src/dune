@@ -11,8 +11,8 @@
  (name jasmin)
  (public_name jasmin.jasmin)
  (flags -rectypes)
- (modules :standard \ main_compiler x86_safety uint63_63 uint63_31)
- (libraries angstrom batteries.unthreaded zarith menhirLib))
+ (modules :standard \ main_compiler x86_safety)
+ (libraries angstrom batteries.unthreaded zarith menhirLib jasmin_coq))
 
 (library
  (name jasminc)
@@ -20,7 +20,3 @@
  (modules main_compiler x86_safety)
  (libraries jasmin jasmin_checksafety))
 
-(rule
- (targets uint63.ml)
- (deps (:gen-file uint63_%{ocaml-config:int_size}.ml))
- (action (copy# %{gen-file} %{targets})))
