@@ -59,7 +59,7 @@ CIL:
 	$(MAKE) -C ../proofs extraction
 	cp ../_build/default/proofs/extraction/*.ml  src/CIL/
 	cp ../_build/default/proofs/extraction/*.mli src/CIL/
-	for i in wsize BinNums Datatypes String0 eqtype utils0 Specif ssrbool ssrfun Bool BinInt BinNat BinPos BinPosDef Nat0 CMorphisms CRelationClasses Init finfun fintype ssrnat choice seq stack_zero_strategy; do \
+	for i in wsize_defs stack_zero_strategy_defs; do \
 	  mv -f "src/CIL/$$i.ml" "src/CIL/$$i.mli" src/pre_CIL; \
 	done
 

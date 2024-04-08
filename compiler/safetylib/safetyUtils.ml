@@ -1,7 +1,7 @@
 open Jasmin
 open Prog
 open Apron
-open Wsize
+open Wsize_defs
 
 module Config = SafetyConfig  
 

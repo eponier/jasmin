@@ -42,9 +42,9 @@ end
 module type Arch = sig
   include Core_arch
 
-  val reg_size : Wsize.wsize
-  val pointer_data : Wsize.wsize
-  val msf_size : Wsize.wsize
+  val reg_size : Wsize_defs.wsize
+  val pointer_data : Wsize_defs.wsize
+  val msf_size : Wsize_defs.wsize
   val rip : var
 
   val asmOp      : (reg, regx, xreg, rflag, cond, asm_op, extra_op) Arch_extra.extended_op Sopn.asmOp

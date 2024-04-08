@@ -116,6 +116,7 @@ ssrnum
 stack_alloc
 stack_zeroization
 stack_zero_strategy
+stack_zero_strategy_defs
 String0
 strings
 Sumbool
@@ -137,6 +138,7 @@ word0
 word
 word_ssrZ
 wsize
+wsize_defs
 x86_decl
 x86_extra
 x86_instr_decl

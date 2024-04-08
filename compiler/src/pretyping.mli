@@ -39,11 +39,11 @@ module Env : sig
   end
 end
 
-val tt_ws : Annotations.wsize -> Wsize.wsize
+val tt_ws : Annotations.wsize -> Wsize_defs.wsize
 val tt_prim : 'op Sopn.asmOp -> Annotations.symbol Location.located -> 'op
 
 type ('a, 'b, 'c, 'd, 'e, 'f, 'g) arch_info = {
-  pd : Wsize.wsize;
+  pd : Wsize_defs.wsize;
   asmOp :
     ('a, 'b, 'c, 'd, 'e, 'f, 'g) Arch_extra.extended_op Sopn.sopn Sopn.asmOp;
   known_implicits : (CoreIdent.Name.t * string) list;
@@ -57,7 +57,7 @@ val tt_item :
   ('a, 'b, 'c, 'd, 'e, 'f, 'g) Arch_extra.extended_op Env.env
 
 val tt_param :
-  Wsize.wsize -> 'asm Env.env -> 'a -> Syntax.pparam -> 'asm Env.env
+  Wsize_defs.wsize -> 'asm Env.env -> 'a -> Syntax.pparam -> 'asm Env.env
 
 val tt_fundef :
   ('a, 'b, 'c, 'd, 'e, 'f, 'g) arch_info ->
@@ -67,7 +67,7 @@ val tt_fundef :
   ('a, 'b, 'c, 'd, 'e, 'f, 'g) Arch_extra.extended_op Env.env
 
 val tt_global :
-  Wsize.wsize -> 'asm Env.env -> 'a -> Syntax.pglobal -> 'asm Env.env
+  Wsize_defs.wsize -> 'asm Env.env -> 'a -> Syntax.pglobal -> 'asm Env.env
 
 val tt_fun :
   'asm Env.env ->

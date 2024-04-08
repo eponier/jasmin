@@ -13,7 +13,7 @@ val exec :
   Low_memory.Memory.mem * Values.values
 
 val initial_memory :
-  Wsize.wsize -> Z.t -> (Z.t * Z.t) list -> Low_memory.Memory.mem Utils0.exec
+  Wsize_defs.wsize -> Z.t -> (Z.t * Z.t) list -> Low_memory.Memory.mem Utils0.exec
 
 val run :
   (module Arch_full.Arch

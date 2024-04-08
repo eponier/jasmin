@@ -2,6 +2,7 @@ open Jasmin
 open Utils
 open Prog
 open Apron
+open Wsize_defs
 open Wsize
 
 open SafetyProf
@@ -475,7 +476,7 @@ type analyse_res =
     warnings : warnings; }
                      
 module AbsInterpreter (PW : ProgWrap) : sig
-  val analyze : Wsize.wsize -> X86_extra.x86_extended_op Sopn.asmOp -> unit -> analyse_res
+  val analyze : Wsize_defs.wsize -> X86_extra.x86_extended_op Sopn.asmOp -> unit -> analyse_res
 end = struct
 
   let source_main_decl = PW.main_source

@@ -1,7 +1,7 @@
 open Jasmin
 open Utils
 open Apron
-open Wsize
+open Wsize_defs
     
 open SafetyUtils
 open SafetyPreanalysis

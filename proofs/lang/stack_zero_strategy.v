@@ -11,17 +11,13 @@ The strategies are not defined in [compiler/stack_zeroization.v] to avoid a
 circular dependency. *)
 
 From mathcomp Require Import ssreflect ssrfun ssrbool seq eqtype fintype.
+Require Export stack_zero_strategy_defs.
 Require Import utils.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
-
-Variant stack_zero_strategy :=
-| SZSloop
-| SZSloopSCT
-| SZSunrolled.
 
 (* This is a list of the strategies. It is defined in Coq so that we can
    show that it is exhaustive (cf. [sz_strategy_list_complete]).

@@ -1,5 +1,5 @@
 (* -------------------------------------------------------------------- *)
-open Wsize
+open Wsize_defs
 open Prog
 
 val z_of_nat  : Datatypes.nat -> Z.t

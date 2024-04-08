@@ -156,7 +156,7 @@ module ArgChecker : sig
      Raise an error if the arguments are invalid. *)
   val check_args :
     arm_op ->
-    (Wsize.wsize * (register, Arm_decl.__, Arm_decl.__, rflag, condt) asm_arg)
+    (Wsize_defs.wsize * (register, Arm_decl.__, Arm_decl.__, rflag, condt) asm_arg)
     list ->
     string
 end = struct
@@ -177,7 +177,7 @@ end = struct
   let chk_imm args n on_shift on_none =
     match List.at args n with
     | _, Imm (_, w) -> (
-        let n = Word0.wunsigned Wsize.U32 w in
+        let n = Word0.wunsigned Wsize_defs.U32 w in
         match ei_kind n with
         | EI_shift -> on_shift n
         | EI_none -> on_none n

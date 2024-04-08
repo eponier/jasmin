@@ -1,5 +1,6 @@
 (* ------------------------------------------------------------------------ *)
 open Utils
+open Wsize_defs
 open Wsize
 
 include module type of struct include CoreIdent end
@@ -257,7 +258,7 @@ val ( ** ) : 'len gexpr -> 'len gexpr -> 'len gexpr
 val cnst   : Z.t -> 'len gexpr
 val icnst  : int -> 'len gexpr
 val is_var : 'len gexpr -> bool
-val get_ofs : Warray_.arr_access -> Wsize.wsize -> 'len gexpr -> int option
+val get_ofs : Warray_.arr_access -> Wsize_defs.wsize -> 'len gexpr -> int option
 
 (* -------------------------------------------------------------------- *)
 (* Functions over lvalue                                                *)

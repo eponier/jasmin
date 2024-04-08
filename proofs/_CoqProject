@@ -9,11 +9,7 @@
 -arg "-w -hiding-delimiting-key"
 -arg "-w +deprecated-since-mathcomp-1.17.0"
 
--R 3rdparty Jasmin
--R arch Jasmin
--R compiler Jasmin
--R lang Jasmin
--R ssrmisc Jasmin
+-R ../_build/default/proofs/ Jasmin
 
 ssrmisc/oseq.v
 ssrmisc/seq_extra.v

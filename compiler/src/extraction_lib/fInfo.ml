@@ -10,7 +10,7 @@ type f_annot = {
     stack_size            : Z.t option;
     stack_align           : wsize option;
     max_call_depth        : Z.t option;
-    stack_zero_strategy   : (Stack_zero_strategy.stack_zero_strategy * wsize option) option;
+    stack_zero_strategy   : (Stack_zero_strategy_defs.stack_zero_strategy * wsize option) option;
     f_user_annot          : annotations;
 }
 

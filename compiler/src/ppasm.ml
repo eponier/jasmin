@@ -7,7 +7,7 @@ open Arch_decl
 open Label
 open X86_decl
 (* -------------------------------------------------------------------- *)
-module W = Wsize
+module W = struct include Wsize_defs include Wsize end
 
 (* -------------------------------------------------------------------- *)
 type rsize = [ `U8 | `U16 | `U32 | `U64 ]

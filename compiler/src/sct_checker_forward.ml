@@ -584,7 +584,7 @@ end = struct
     in
     { venv with vtype = Sv.fold (fun x vtype ->
         let in_memory = match x.v_kind with
-          | Wsize.Global (* likely unused as global variables are not in venv.vars *)
+          | Wsize_defs.Global (* likely unused as global variables are not in venv.vars *)
           | Stack _ -> true
           | Const | Inline | Reg _ -> false
         in

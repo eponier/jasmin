@@ -1,17 +1,17 @@
 val escape : string -> string
 (** replace dots & columns by underscores *)
 
-val pp_wsize : Format.formatter -> Wsize.wsize -> unit
+val pp_wsize : Format.formatter -> Wsize_defs.wsize -> unit
 val pp_aligned : Format.formatter -> Memory_model.aligned -> unit
 val string_of_signess : Wsize.signedness -> string
-val string_of_velem : Wsize.signedness -> Wsize.wsize -> Wsize.velem -> string
+val string_of_velem : Wsize.signedness -> Wsize_defs.wsize -> Wsize.velem -> string
 val string_of_op1 : Expr.sop1 -> string
 val string_of_op2 : Expr.sop2 -> string
 val pp_opn :
-  Wsize.wsize -> 'asm Sopn.asmOp -> Format.formatter -> 'asm Sopn.sopn -> unit
+  Wsize_defs.wsize -> 'asm Sopn.asmOp -> Format.formatter -> 'asm Sopn.sopn -> unit
 val pp_syscall : BinNums.positive Syscall_t.syscall_t -> string
 val pp_bool : Format.formatter -> bool -> unit
-val pp_kind : Format.formatter -> Wsize.v_kind -> unit
+val pp_kind : Format.formatter -> Wsize_defs.v_kind -> unit
 val pp_btype : Format.formatter -> Prog.base_ty -> unit
 
 val pp_gtype :
@@ -26,7 +26,7 @@ val pp_arr_access :
   Format.formatter ->
   Memory_model.aligned ->
   Warray_.arr_access ->
-  Wsize.wsize ->
+  Wsize_defs.wsize ->
   'var ->
   'expr ->
   unit
@@ -37,7 +37,7 @@ val pp_arr_slice :
   'len Utils.pp ->
   Format.formatter ->
   Warray_.arr_access ->
-  Wsize.wsize ->
+  Wsize_defs.wsize ->
   'var ->
   'expr ->
   'len ->

@@ -3,10 +3,10 @@ type symbol = string
 type pident = symbol Location.located
 
 (* -------------------------------------------------------------------- *)
-type wsize = Wsize.wsize 
+type wsize = Wsize_defs.wsize 
 
 let int_of_ws = function
-  | Wsize.U8 -> 8
+  | Wsize_defs.U8 -> 8
   | U16  -> 16
   | U32  -> 32
   | U64  -> 64

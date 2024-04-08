@@ -1,5 +1,6 @@
 open Jasmin
 open Utils
+open Wsize_defs
 open Wsize
 open Prog
 

@@ -4,21 +4,13 @@
 
 From mathcomp Require Import ssreflect ssrfun ssrbool seq eqtype fintype.
 Require Import strings ZArith utils.
+Require Export wsize_defs.
 Import Utf8.
 Import word_ssrZ.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
-
-(* -------------------------------------------------------------- *)
-Variant wsize :=
-  | U8
-  | U16
-  | U32
-  | U64
-  | U128
-  | U256.
 
 (* Size in bits of the elements of a vector. *)
 Variant velem := VE8 | VE16 | VE32 | VE64.
@@ -153,22 +145,6 @@ Definition pp_ve_sz_ve_sz (s: string) (ve: velem) (sz: wsize) (ve': velem) (sz':
 Definition pp_sz_sz (s: string) (sign:bool) (sz sz': wsize) (_: unit) : string :=
   s ++ "_u" ++ string_of_wsize sz ++ (if sign then "s" else "u")%string ++ string_of_wsize sz'.
 
-(* -------------------------------------------------------------------- *)
-Variant reg_kind : Type :=
-| Normal
-| Extra.
-
-Variant writable : Type := Constant | Writable.
-
-Variant reference : Type := Direct | Pointer of writable.
-
-Variant v_kind :=
-| Const            (* global parameter  *)
-| Stack of reference (* stack variable    *)
-| Reg   of reg_kind * reference (* register variable *)
-| Inline           (* inline variable   *)
-| Global           (* global (in memory) constant *)
-.
 
 (* -------------------------------------------------------------------- *)
 Variant safe_cond :=

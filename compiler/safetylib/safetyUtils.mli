@@ -39,7 +39,7 @@ type analyzer_param = {
 val get_fun_def : 'a * ('b, 'c, 'asm) gfunc list -> funname -> ('b, 'c, 'asm) gfunc option
 
 (*------------------------------------------------------------*)
-val wsize_of_int : int -> Wsize.wsize
+val wsize_of_int : int -> Wsize_defs.wsize
                             
 (*------------------------------------------------------------*)
 val env_of_list : Var.t list -> Apron.Environment.t

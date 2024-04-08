@@ -1,5 +1,5 @@
 open Utils
-open Wsize
+open Wsize_defs
 open Memory_model
 open Prog
 

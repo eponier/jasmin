@@ -159,12 +159,12 @@ annotations:
  * -------------------------------------------------------------------- *)
 
 utype:
-| T_U8   { Wsize.U8   }
-| T_U16  { Wsize.U16  }
-| T_U32  { Wsize.U32  }
-| T_U64  { Wsize.U64  }
-| T_U128 { Wsize.U128 }
-| T_U256 { Wsize.U256 }
+| T_U8   { Wsize_defs.U8   }
+| T_U16  { Wsize_defs.U16  }
+| T_U32  { Wsize_defs.U32  }
+| T_U64  { Wsize_defs.U64  }
+| T_U128 { Wsize_defs.U128 }
+| T_U256 { Wsize_defs.U256 }
 
 ptype_r:
 | T_BOOL
