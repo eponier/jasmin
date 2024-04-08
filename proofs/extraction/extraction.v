@@ -1,4 +1,4 @@
-Require jasmin_compiler.
+From Jasmin Require jasmin_compiler.
 (* Do not “Require” other modules from Jasmin here:
    expand the jasmin_compiler module instead. *)
 
@@ -51,8 +51,6 @@ Extract Constant ident.Cident.id_kind => "CoreIdent.Cident.id_kind".
 
 Extract Constant ident.Cident.spill_to_mmx => "CoreIdent.Cident.spill_to_mmx".
 
-Cd  "lang/ocaml".
-
 Extraction Blacklist String List Nat Uint63 Utils Var Array.
 
 Separate Extraction
@@ -76,4 +74,3 @@ Separate Extraction
   arm_params
   compiler.
 
-Cd  "../..".

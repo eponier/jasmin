@@ -1,4 +1,5 @@
-(lang dune 2.9)
+(lang dune 3.8)
+(using coq 0.8)
 (name jasmin)
 (license MIT)
 (authors "The Jasmin development team")

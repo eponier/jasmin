@@ -43,9 +43,9 @@ build: native
 define do-build
 	$(RM) jasminc jazz2tex jazzct
 	dune build @check entry/jasminc.$(1) entry/jazz2tex.$(1) entry/jazzct.$(1)
-	ln -sf "_build/default/entry/jasminc.$(1)" jasminc
-	ln -sf "_build/default/entry/jazz2tex.$(1)" jazz2tex
-	ln -sf "_build/default/entry/jazzct.$(1)" jazzct
+	ln -sf "../_build/default/compiler/entry/jasminc.$(1)" jasminc
+	ln -sf "../_build/default/compiler/entry/jazz2tex.$(1)" jazz2tex
+	ln -sf "../_build/default/compiler/entry/jazzct.$(1)" jazzct
 endef
 
 byte:
@@ -55,10 +55,10 @@ native:
 	$(call do-build,exe)
 
 CIL:
-	$(RM) -f src/CIL/*.ml src/CIL/*.mli ../proofs/extraction.vo
+	$(RM) -f src/CIL/*.ml src/CIL/*.mli
 	$(MAKE) -C ../proofs extraction
-	cp ../proofs/lang/ocaml/*.ml  src/CIL/
-	cp ../proofs/lang/ocaml/*.mli src/CIL/
+	cp ../_build/default/proofs/extraction/*.ml  src/CIL/
+	cp ../_build/default/proofs/extraction/*.mli src/CIL/
 
 check: build
 	$(CHECK) --report=report.log $(CHECKCATS)
