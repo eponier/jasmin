@@ -57,8 +57,6 @@ FMapFacts
 FMapList
 gen_map
 global
-Hexadecimal
-HexadecimalString
 ident
 Init
 inline
@@ -108,7 +106,6 @@ Specif
 ssralg
 ssrbool
 ssreflect
-ssrfun0
 ssrfun
 ssrint
 ssrnat

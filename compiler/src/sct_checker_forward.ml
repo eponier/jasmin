@@ -634,7 +634,7 @@ end = struct
         let kind =
           match x.v_kind with
           | Const | Inline | Stack _ -> assert false
-          | Global -> if is_ty_arr x.v_ty then Wsize.Stack(Pointer Constant) else Wsize.Stack(Direct)
+          | Global -> if is_ty_arr x.v_ty then Wsize_defs.Stack(Pointer Constant) else Wsize_defs.Stack(Direct)
           | Reg (_, r) -> Stack(r) in
         Some (V.mk x.v_name kind x.v_ty x.v_dloc [])
     in
