@@ -3,7 +3,7 @@ open Var0
 open Prog
 include CoreConv
 
-module W = Wsize_defs
+module W = Wsize
 module T = Type
 module C = Expr
 

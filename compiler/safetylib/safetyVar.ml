@@ -1,7 +1,7 @@
 open Jasmin
 open Prog
 open Apron
-open Wsize_defs
+open Wsize
 open Utils
 
 type v_scope = Expr.v_scope

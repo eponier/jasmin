@@ -35,7 +35,6 @@ let lazy_regalloc = ref false
 
 let stack_zero_strategy = ref None
 let stack_zero_strategies =
-  let open Stack_zero_strategy_defs in
   let open Stack_zero_strategy in
   let assoc = function
     | SZSloop -> "loop"

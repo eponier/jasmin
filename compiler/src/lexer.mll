@@ -70,12 +70,12 @@
 
   let size_of_string =
   function
-  | "8"   -> Wsize_defs.U8
-  | "16"  -> Wsize_defs.U16
-  | "32"  -> Wsize_defs.U32
-  | "64"  -> Wsize_defs.U64
-  | "128" -> Wsize_defs.U128
-  | "256" -> Wsize_defs.U256
+  | "8"   -> Wsize.U8
+  | "16"  -> Wsize.U16
+  | "32"  -> Wsize.U32
+  | "64"  -> Wsize.U64
+  | "128" -> Wsize.U128
+  | "256" -> Wsize.U256
   | _ -> assert false
 
   let mksizesign sw s = size_of_string sw, sign_of_char s

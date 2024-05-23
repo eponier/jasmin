@@ -1,4 +1,4 @@
-open Wsize_defs
+open Wsize
 (* -------------------------------------------------------------------- *)
 exception InvalidRegSize of wsize
 

@@ -1,5 +1,5 @@
 open Utils
-open Wsize_defs
+open Wsize
 open Prog
 open PrintCommon
 module E = Expr

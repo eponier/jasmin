@@ -7,7 +7,7 @@ module A = Annotations
 module S = Syntax
 module E = Expr
 module P = Prog
-module W = struct include Wsize_defs include Wsize end
+module W = Wsize
 module T = Type
 
 (* -------------------------------------------------------------------- *)
@@ -1479,7 +1479,7 @@ let pexpr_of_plvalue exn l =
 
 
 type ('a, 'b, 'c, 'd, 'e, 'f, 'g) arch_info = {
-  pd : W.wsize;
+  pd : Wsize.wsize;
   asmOp : ('a, 'b, 'c, 'd, 'e, 'f, 'g) Arch_extra.extended_op Sopn.sopn Sopn.asmOp;
   known_implicits : (CoreIdent.Name.t * string) list;
   flagnames: CoreIdent.Name.t list;

@@ -3,10 +3,10 @@ open Execlib
 
 let w_of_z sz z = Values.Vword (sz, Conv.word_of_z sz z)
 let w_of_string sz n = w_of_z sz (Z.of_string n)
-let w8 i = w_of_string Wsize_defs.U8 i
-let w16 i = w_of_string Wsize_defs.U16 i
-let w128 i = w_of_string Wsize_defs.U128 i
-let w256 i = w_of_string Wsize_defs.U256 i
+let w8 i = w_of_string Wsize.U8 i
+let w16 i = w_of_string Wsize.U16 i
+let w128 i = w_of_string Wsize.U128 i
+let w256 i = w_of_string Wsize.U256 i
 
 let () =
   let prog = load_file "sem_unit.jazz" in

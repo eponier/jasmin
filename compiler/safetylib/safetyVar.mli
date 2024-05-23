@@ -1,7 +1,7 @@
 open Jasmin
 open Utils
 open Prog
-open Wsize_defs
+open Wsize
 
 type v_scope = Expr.v_scope
                  

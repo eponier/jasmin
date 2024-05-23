@@ -1,5 +1,5 @@
 open Prog
-open Wsize_defs
+open Wsize
 open Sopn
 
 val preprocess : wsize -> 'asm asmOp -> (unit, 'asm) pprog -> (unit, 'asm) prog

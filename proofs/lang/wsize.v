@@ -4,13 +4,15 @@
 
 From mathcomp Require Import ssreflect ssrfun ssrbool seq eqtype fintype.
 Require Import strings ZArith utils.
-Require Export wsize_defs.
+Require wsize_defs.
 Import Utf8.
 Import word_ssrZ.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
+
+Include wsize_defs.
 
 (* Size in bits of the elements of a vector. *)
 Variant velem := VE8 | VE16 | VE32 | VE64.

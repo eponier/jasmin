@@ -14,7 +14,7 @@ Module Type CORE_IDENT.
   Parameter tagI : injective tag.
 
   Parameter id_name : t -> string.
-  Parameter id_kind : t -> v_kind.
+  Parameter id_kind : t -> wsize.v_kind.
 
   Parameter spill_to_mmx : t -> bool.
 
@@ -31,7 +31,7 @@ Module Cident : CORE_IDENT.
   Proof. done. Qed.
 
   Definition id_name of t : string := "".
-  Definition id_kind of t := Const.
+  Definition id_kind of t := wsize.Const.
 
   Definition spill_to_mmx (x : t) := false.
 End Cident.
@@ -55,7 +55,7 @@ Module Ident <: IDENT.
 
   Definition ident := WrapIdent.t.
   Definition id_name : ident -> string := Cident.id_name.
-  Definition id_kind : ident → v_kind := Cident.id_kind.
+  Definition id_kind : ident → wsize.v_kind := Cident.id_kind.
 
   Module Mid := Tident.Mt.
 

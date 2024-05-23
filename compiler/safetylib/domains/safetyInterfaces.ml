@@ -1,6 +1,6 @@
 open Jasmin
 open Prog
-open Wsize_defs
+open Wsize
 open Apron
 
 open SafetyUtils

@@ -63,7 +63,7 @@ let check_safety_p pd asmOp analyze s (p : (_, 'asm) Prog.prog) source_p =
 module type ArchCoreWithAnalyze = sig
   module C : Arch_full.Core_arch
   val analyze :
-    Wsize_defs.wsize ->
+    Wsize.wsize ->
     (C.reg, C.regx, C.xreg, C.rflag, C.cond, C.asm_op, C.extra_op) Arch_extra.extended_op Sopn.asmOp ->
     (unit, (C.reg, C.regx, C.xreg, C.rflag, C.cond, C.asm_op, C.extra_op) Arch_extra.extended_op) func ->
     (unit, (C.reg, C.regx, C.xreg, C.rflag, C.cond, C.asm_op, C.extra_op) Arch_extra.extended_op) func ->

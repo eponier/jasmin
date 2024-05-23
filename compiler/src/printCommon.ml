@@ -1,7 +1,6 @@
 open Format
 open Utils
 open Prog
-open Wsize_defs
 open Wsize
 module E = Expr
 
