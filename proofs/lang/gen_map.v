@@ -11,9 +11,9 @@ Unset Printing Implicit Defensive.
 
 (* ** *)
 
-
+(* the type is eqType + EqDecision, this is redundant, but simpler *)
 Module Type CmpType.
-  Parameter t : Type.
+  Parameter t : eqType.
   Parameter EqD : EqDecision t.
   Existing Instance EqD.
   Parameter C : Countable t.
@@ -26,19 +26,6 @@ Reserved Notation "x .[ k <- v ]"
 Module Type MAP.
 
   Declare Module K: CmpType.
-
-  Definition t_eqb x1 x2 :=
-    if K.EqD x1 x2 then true else false.
-
-  Lemma t_eq_axiom : Equality.axiom t_eqb.
-  Proof.
-    move=> x1 x2; rewrite /t_eqb.
-    case: K.EqD => /=.
-    + by left.
-    by right.
-  Qed.
-
-  HB.instance Definition t_eqType := hasDecEq.Build K.t t_eq_axiom.
 
   Parameter t : Type -> Type.
 
@@ -168,18 +155,6 @@ Module Mmake (K':CmpType) <: MAP.
 
   Module Import K := K'.
 
-  Definition t_eqb x1 x2 :=
-    if K.EqD x1 x2 then true else false.
-
-  Lemma t_eq_axiom : Equality.axiom t_eqb.
-  Proof.
-    move=> x1 x2; rewrite /t_eqb.
-    case: K.EqD => /=.
-    + by left.
-    by right.
-  Qed.
-
-  HB.instance Definition t_eqType := hasDecEq.Build K.t t_eq_axiom.
 (*
   Module Ordered := MkOrdT K.
 
@@ -630,7 +605,7 @@ Require Import ZArith.
 
 Module CmpPos <: CmpType.
 
-  Definition t := positive.
+  Definition t : eqType := positive.
   Definition EqD : EqDecision t := _.
   Definition C : Countable t := _.
 
@@ -641,10 +616,10 @@ Module Mp := Mmake CmpPos.
 (* --------------------------------------------------------------------------
  ** Map of Z
  * -------------------------------------------------------------------------- *)
-
+From mathcomp Require Import word_ssrZ.
 Module CmpZ <: CmpType.
 
-  Definition t := Z.
+  Definition t : eqType := Z.
   Definition EqD : EqDecision t := _.
   Definition C : Countable t := _.
 
