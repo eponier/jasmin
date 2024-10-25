@@ -11,6 +11,7 @@
 -arg "-w -argument-scope-delimiter"
 -arg "-w -redundant-canonical-projection"
 -arg "-w -projection-no-head-constant"
+-arg "-async-proofs off"
 
 -R 3rdparty Jasmin
 -R arch Jasmin
