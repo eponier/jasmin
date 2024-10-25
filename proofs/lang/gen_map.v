@@ -38,7 +38,7 @@ Module Type MAP.
     by right.
   Qed.
 
-  HB.instance Definition _ := hasDecEq.Build K.t t_eq_axiom.
+  HB.instance Definition t_eqType := hasDecEq.Build K.t t_eq_axiom.
 
   Parameter t : Type -> Type.
 
@@ -179,7 +179,7 @@ Module Mmake (K':CmpType) <: MAP.
     by right.
   Qed.
 
-  HB.instance Definition _ := hasDecEq.Build K.t t_eq_axiom.
+  HB.instance Definition t_eqType := hasDecEq.Build K.t t_eq_axiom.
 (*
   Module Ordered := MkOrdT K.
 
@@ -534,8 +534,8 @@ Module Mmake (K':CmpType) <: MAP.
   Qed.
 
 End Mmake.
-
-Module DMmake (K:CmpType) (E:CompuEqDec with Definition t := K.t).
+(*
+Module DMmake (K:CmpType).
 
   Record boxed (P:K.t -> Type) := Box {
     box_t : K.t;
@@ -545,14 +545,15 @@ Module DMmake (K:CmpType) (E:CompuEqDec with Definition t := K.t).
   Definition from_boxed {P} (k:K.t) (b:option (boxed P)) : option (P k):=
     match b with
     | Some (Box k' v) =>
-      match E.eq_dec k' k with
+      match K.EqD k' k with
       | left Heq => Some (eq_rect k' P v k Heq)
       | _        => None
       end
     | _ => None
     end.
 
-  Module Map := Mmake K.
+  (* we import to get eqType. Maybe we could move eqType decl to K instead? *)
+  Module Import Map := Mmake K.
 
   Definition t (P:K.t -> Type) := Map.t (boxed P).
 
@@ -578,15 +579,10 @@ Module DMmake (K:CmpType) (E:CompuEqDec with Definition t := K.t).
   Lemma get0 P x : (empty P).[x] = None.
   Proof. by rewrite /empty /get Map.get0. Qed.
 
-  Lemma eq_dec_refl x: E.eq_dec x x = left (erefl x).
+  Lemma eq_dec_refl x: K.EqD x x = left (erefl x).
   Proof.
-    case: (E.eq_dec x x) (@E.eq_dec_r x x) => [eq _ | b /(_ b (erefl _)) /eqP //].
+    case: (K.EqD x x) => // e.
     by rewrite eq_axiomK.
-  Qed.
-
-  Lemma eq_dec_irefl x y: x <> y -> E.eq_dec x y = right I.
-  Proof.
-    case: (E.eq_dec x y) (@E.eq_dec_r x y) => [| []] //.
   Qed.
 
   Lemma setP {P} (m: t P) x y (v:P x) :
@@ -624,7 +620,7 @@ Module DMmake (K:CmpType) (E:CompuEqDec with Definition t := K.t).
     by case: (f x)=> //= ?;rewrite eq_dec_refl.
   Qed.
 
-End DMmake.
+End DMmake. *)
 
 (* --------------------------------------------------------------------------
  ** Map of positive
@@ -632,14 +628,11 @@ End DMmake.
 
 Require Import ZArith.
 
-Module CmpPos.
+Module CmpPos <: CmpType.
 
-  Definition t : eqType := positive.
-
-  Definition cmp : t -> t -> comparison := Pos.compare.
-
-  Lemma cmpO : Cmp cmp.
-  Proof. apply positiveO. Qed.
+  Definition t := positive.
+  Definition EqD : EqDecision t := _.
+  Definition C : Countable t := _.
 
 End CmpPos.
 
@@ -648,15 +641,12 @@ Module Mp := Mmake CmpPos.
 (* --------------------------------------------------------------------------
  ** Map of Z
  * -------------------------------------------------------------------------- *)
-From mathcomp Require Import word_ssrZ.
-Module CmpZ.
 
-  Definition t : eqType := Z.
+Module CmpZ <: CmpType.
 
-  Definition cmp : t -> t -> comparison := Z.compare.
-
-  Lemma cmpO : Cmp cmp.
-  Proof. apply ZO. Qed.
+  Definition t := Z.
+  Definition EqD : EqDecision t := _.
+  Definition C : Countable t := _.
 
 End CmpZ.
 
@@ -666,54 +656,10 @@ Module Mz := Mmake CmpZ.
  ** Finite Set
  * -------------------------------------------------------------------------- *)
 
-Require Import MSets.
-
-Module MkMOrdT (T:CmpType) <: Orders.OrderedType.
-#[global]
-  Existing Instance T.cmpO | 1.
-
-  Definition t := Equality.sort T.t.
-
-  Definition eq := @Logic.eq t.
-
-  Lemma eq_equiv : Equivalence eq.
-  Proof. by auto. Qed.
-
-  Definition lt x y := T.cmp x y = Lt.
-
-  Lemma lt_strorder : StrictOrder lt.
-  Proof.
-    constructor.
-    + by move=> x;rewrite /complement /lt cmp_refl.
-    move=> ???;apply cmp_trans.
-  Qed.
-
-  Lemma lt_compat : Proper (eq ==> eq ==> iff) lt.
-  Proof. by rewrite /eq;move=> ?? -> ?? ->. Qed.
-
-  Definition compare : t -> t -> comparison := T.cmp.
-
-  Lemma compare_spec :
-     forall x y : t, CompareSpec (eq x y) (lt x y) (lt y x) (compare x y).
-  Proof.
-    move=> x y;rewrite /compare /eq /lt (cmp_sym y x).
-    case: T.cmp (@cmp_eq _ _ T.cmpO x y);constructor;auto.
-  Qed.
-
-  Lemma eq_dec : forall x y : t, {eq x y} + {~ eq x y}.
-  Proof.
-    by move=> x y;case:(x =P y);[left | right].
-  Qed.
-
-End MkMOrdT.
-
-Module Smake (T:CmpType).
-  Module Ordered := MkMOrdT T.
-  Include (MSetAVL.Make Ordered).
+Module Smake (Import K:CmpType).
+  Definition t := gset K.t.
 End Smake.
 
 Module PosSet.
   Module Sp  := Smake CmpPos.
-  Module SpP := MSetEqProperties.EqProperties Sp.
-  Module SpD := MSetDecide.WDecide Sp.
 End PosSet.
