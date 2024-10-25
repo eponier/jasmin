@@ -1,93 +1,24 @@
 (* ** Imports and settings *)
-Require Import FMaps FMapAVL FSetAVL.
+From HB Require Import structures.
 From mathcomp Require Import ssreflect ssrfun ssrbool seq eqtype.
+From stdpp Require Import gmap. (* import after ssreflect, otherwise Is_true wins over is_true *)
+Import ssrfun seq.
 Require Import utils.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
-Lemma InAE (A: Type) (eqA: relation A) a m :
-  InA eqA a m ->
-  match m with
-  | [::] => False
-  | a' :: m' => eqA a a' \/ InA eqA a m'
-  end.
-Proof. by case; [ left | right ]. Qed.
-
-Arguments InAE {A eqA a m}.
-
-Lemma NoDupAE (A: Type) (eqA: relation A) m :
-  NoDupA eqA m ->
-  match m with
-  | [::] => True
-  | a' :: m' => ~ InA eqA a' m' /\ NoDupA eqA m'
-  end.
-Proof. by case. Qed.
-
-
 (* ** *)
 
+
 Module Type CmpType.
-
-  Parameter t : eqType.
-
-  Parameter cmp : t -> t -> comparison.
-
-  Parameter cmpO : Cmp cmp.
-
+  Parameter t : Type.
+  Parameter EqD : EqDecision t.
+  Existing Instance EqD.
+  Parameter C : Countable t.
+  Existing Instance C.
 End CmpType.
-
-Module MkOrdT (T:CmpType) <: OrderedType.
-
-#[global]
-  Existing Instance T.cmpO | 1.
-
-  Definition t := Equality.sort T.t.
-
-  Definition eq x y := T.cmp x y = Eq.
-  Definition lt x y := T.cmp x y = Lt.
-
-  Lemma eq_refl x: eq x x.
-  Proof. apply: cmp_refl. Qed.
-
-  Lemma eq_sym x y: eq x y -> eq y x.
-  Proof. by rewrite /eq=> Heq;rewrite cmp_sym Heq. Qed.
-
-  Lemma eq_trans x y z: eq x y -> eq y z -> eq x z.
-  Proof. apply cmp_trans. Qed.
-
-  Lemma lt_trans x y z: lt x y -> lt y z -> lt x z.
-  Proof. apply cmp_trans. Qed.
-
-  Lemma lt_not_eq x y: lt x y -> ~ eq x y.
-  Proof. by rewrite /lt /eq => ->. Qed.
-
-  Lemma gt_lt x y : T.cmp x y = Gt -> lt y x.
-  Proof. by rewrite /lt=> H;rewrite cmp_sym H. Qed.
-
-  Definition compare x y : Compare lt eq x y :=
-    let c := T.cmp x y in
-    match c as c0 return c = c0 -> Compare lt eq x y with
-    | Lt => @LT t lt eq x y
-    | Eq => @EQ t lt eq x y
-    | Gt => fun h => @GT t lt eq x y (gt_lt h)
-    end (erefl c).
-
-  Definition eq_dec x y: {eq x y} + {~ eq x y}.
-  Proof. (rewrite /eq;case:T.cmp;first by left); by right. Qed.
-
-End MkOrdT.
-
-Module Type CompuEqDec.
-
-  Parameter t: eqType.
-
-  Parameter eq_dec : forall (t1 t2:t), {t1 = t2} + {True}.
-
-  Axiom eq_dec_r : forall t1 t2 tt, eq_dec t1 t2 = right tt -> t1 != t2.
-
-End CompuEqDec.
 
 Reserved Notation "x .[ k <- v ]"
      (at level 2, k at level 200, v at level 200, format "x .[ k  <-  v ]").
@@ -95,6 +26,19 @@ Reserved Notation "x .[ k <- v ]"
 Module Type MAP.
 
   Declare Module K: CmpType.
+
+  Definition t_eqb x1 x2 :=
+    if K.EqD x1 x2 then true else false.
+
+  Lemma t_eq_axiom : Equality.axiom t_eqb.
+  Proof.
+    move=> x1 x2; rewrite /t_eqb.
+    case: K.EqD => /=.
+    + by left.
+    by right.
+  Qed.
+
+  HB.instance Definition _ := hasDecEq.Build K.t t_eq_axiom.
 
   Parameter t : Type -> Type.
 
@@ -136,7 +80,7 @@ Module Type MAP.
       (K.t -> T -> bool) ->
       t T -> bool.
 
-  Parameter elements : forall {T}, t T -> seq (K.t * T).
+  Parameter elements : forall {T}, t T -> seq (K.t * T)%type.
 
   Parameter fold : forall {T A}, (K.t -> T -> A -> A) -> t T -> A -> A.
 
@@ -222,151 +166,139 @@ End MAP.
 
 Module Mmake (K':CmpType) <: MAP.
 
-  Module K := K'.
+  Module Import K := K'.
 
+  Definition t_eqb x1 x2 :=
+    if K.EqD x1 x2 then true else false.
+
+  Lemma t_eq_axiom : Equality.axiom t_eqb.
+  Proof.
+    move=> x1 x2; rewrite /t_eqb.
+    case: K.EqD => /=.
+    + by left.
+    by right.
+  Qed.
+
+  HB.instance Definition _ := hasDecEq.Build K.t t_eq_axiom.
+(*
   Module Ordered := MkOrdT K.
 
   Module Map := FMapAVL.Make Ordered.
 
   Module Facts := WFacts_fun Ordered Map.
+*)
+  Definition t := gmap K.t.
 
-  Definition t (T:Type) := Map.t T.
+  Definition empty T : t T := ∅. (* ∅ = empty *)
 
-  Definition empty T : t T := Map.empty T.
-  
-  Definition is_empty  {T} (m:t T) := Map.is_empty m.
+  Definition is_empty {T} (m:t T) := if map_eq_dec_empty m then true else false.
 
-  Definition get {T} (m:t T) (k:K.t) := Map.find k m.
+  Definition get {T} (m:t T) (k:K.t) := lookup k m.
 
-  Definition set {T} (m:t T) (k:K.t) (v:T) := Map.add k v m.
+  Definition set {T} (m:t T) (k:K.t) (v:T) := insert k v m.
 
-  Definition remove {T} (m:t T) (k:K.t) := Map.remove k m.
+  Definition remove {T} (m:t T) (k:K.t) := delete k m.
 
-  Definition map := Map.map.
+  Definition map A B (f : A -> B) (m : t A) : t B := f <$> m.
 
-  Definition mapi := Map.mapi.
+  (* We define the function with a fold, because it is not built-in.
+     Ideally, we would define a built-in version on gmap. *)
+  Definition mapi A B (f : K.t -> A -> B) (m : t A) : t B :=
+    map_imap (fun k v => Some (f k v)) m.
+(*     map_fold (fun k v acc => insert k (f k v) acc) ∅ m. *)
 
-  Definition raw_map2 {T1 T2 T3} (f:K.t -> option T1 -> option T2 -> option T3) m1 m2 :=
-    Map.Raw.map2_opt
-      (fun k d o => f k (Some d) o)
-      (Map.Raw.map_option (fun k d => f k (Some d) None))
-      (Map.Raw.map_option (fun k d' => f k None (Some d'))) m1 m2.
+  (* fold is linked with elements with a fold_left, we apply rev to have
+     the right order *)
+  Definition elements A (m : t A) : seq (K.t * A) := reverse (map_to_list m).
 
-  Definition elements := Map.elements.
-
-  Definition fold     := Map.fold.
+  Definition fold A B (f : K.t -> A -> B -> B) (m : t A) acc : B :=
+    map_fold f acc m.
 
   Section QUANT.
     Context (T1:Type) (T2:Type) (f: K.t -> T1 -> bool) (f2: K.t -> T1 -> T2 -> bool).
 
-    Fixpoint all_t (t:Map.Raw.tree T1) := 
-      match t with
-      | Map.Raw.Leaf => true
-      | Map.Raw.Node t1 k x t2 _ => f k x && all_t t1 && all_t t2
-      end.
+    Definition all (m : t T1) :=
+      map_fold (fun k v acc => acc && f k v) true m.
 
-    Fixpoint has_t (t:Map.Raw.tree T1) := 
-      match t with
-      | Map.Raw.Leaf => false
-      | Map.Raw.Node t1 k x t2 _ => f k x || has_t t1 || has_t t2
-      end.
+    Definition has (m : t T1) :=
+      map_fold (fun k v acc => acc || f k v) false m.
 
-    Fixpoint incl_t (t1:Map.Raw.tree T1) (t2:Map.Raw.tree T2) :=
-      match t1 with
-      | Map.Raw.Leaf => true
-      | Map.Raw.Node t11 k x1 t12 _ =>
-        let '(Map.Raw.mktriple t21 ox2 t22) := Map.Raw.split k t2 in
-        [&& match ox2 with
-            | None => f k x1
-            | Some x2 => f2 k x1 x2 
-            end,
-            incl_t t11 t21 & incl_t t12 t22]
-      end.
+    Definition incl_def (m1 : t T1) (m2 : t T2) :=
+      map_fold (fun k v1 acc =>
+        acc &&
+        match lookup k m2 with
+        | None => f k v1
+        | Some v2 => f2 k v1 v2
+        end) true m1.
 
-    Definition all (m: t T1) := all_t (Map.this m).
-    Definition has (m: t T1) := has_t (Map.this m).
-    
    End QUANT.
-
-  Definition incl_def (T1:Type) (T2:Type) (f: K.t -> T1 -> bool) (f2: K.t -> T1 -> T2 -> bool) m1 m2:= 
-    incl_t f f2 (Map.this m1) (Map.this m2).
 
   Definition incl T1 T2 := @incl_def T1 T2 (fun _ _ => false).
 
   Definition in_codom {T:eqType} v (m:t T) :=
     has (fun _ v' => v == v') m.
 
-  Lemma raw_map2_bst {T1 T2 T3} (f:K.t -> option T1 -> option T2 -> option T3) m1 m2:
-    Map.Raw.bst (raw_map2 f (Map.this m1) (Map.this m2)).
-  Proof.
-    rewrite /raw_map2.
-    apply: (@Map.Raw.Proofs.map2_opt_bst _ _ _ f).
-    + by apply Map.Raw.Proofs.map_option_bst=> ??? /cmp_eq ->.
-    + by apply Map.Raw.Proofs.map_option_bst=> ??? /cmp_eq ->.
-    + by move=> x m H;apply Map.Raw.Proofs.map_option_find=>// ??? /cmp_eq ->.
-    + by move=> x m H;apply Map.Raw.Proofs.map_option_find=>// ??? /cmp_eq ->.
-    + by apply Map.is_bst.
-    by apply Map.is_bst.
-  Qed.
-
+  (* hacky implem *)
   Definition map2 {T1 T2 T3} (f:K.t -> option T1 -> option T2 -> option T3)
       (m1:t T1) (m2: t T2) : t T3 :=
-   (@Map.Bst _ (raw_map2 f m1.(Map.this) m2.(Map.this))
-       (raw_map2_bst f m1 m2)).
+    let m1' :=
+      map_fold (fun k v1 acc =>
+        match f k (Some v1) (lookup k m2) with
+        | None => acc
+        | Some v2 => insert k v2 acc
+        end) ∅ m1
+    in
+    let m2' :=
+      map_fold (fun k v2 acc =>
+        match f k (lookup k m1) (Some v2) with
+        | None => acc
+        | Some v2 => insert k v2 acc
+        end) ∅ m2
+    in
+    union m1' m2'.
 
-  Lemma map_option_bst {T1 T2} (f:K.t -> T1 -> option T2) (m:t T1) : 
-    Map.Raw.bst (Map.Raw.map_option f (Map.this m)).
-  Proof.
-    apply: Map.Raw.Proofs.map_option_bst.
-    + by move=> ??? h; rewrite (cmp_eq h).
-    by apply Map.is_bst.
-  Qed.
-
-  Definition filter_map {T1 T2} (f:K.t -> T1 -> option T2) (m:t T1) : t T2 := 
-    @Map.Bst _ (Map.Raw.map_option f (Map.this m))
-              (map_option_bst f m).
+  Definition filter_map {T1 T2} (f:K.t -> T1 -> option T2) (m:t T1) : t T2 :=
+    map_imap f m.
 
   Notation "m .[ s ]" := (get m s).
   Notation "x .[ k <- v ]" := (@set _ x k v).
 
   Lemma get0 T x : (empty T).[x] = None.
-  Proof. by rewrite /empty /get Facts.empty_o. Qed.
+  Proof. done. Qed.
 
   Lemma is_emptyP T (m: t T): reflect (forall x, m.[x] = None) (is_empty m).
   Proof.
-    rewrite /is_empty /get /Map.find /Map.Empty /Map.is_empty; case heq: Map.Raw.is_empty; constructor.
-    + move=> x; have h := Map.Raw.Proofs.is_empty_2 heq.
-      case heq1:  Map.Raw.find => [ e | //].
-      by have /h := Map.Raw.Proofs.find_2 heq1.
-    move=> h.
-    rewrite Map.Raw.Proofs.is_empty_1 in heq => //.
-    rewrite /Map.Raw.Proofs.Empty => k e hm.
-    have := Map.Raw.Proofs.find_1 (Map.is_bst m) hm.
-    by rewrite h.
+    rewrite /is_empty /get.
+    case: map_eq_dec_empty => /=.
+    + by move=> ->; left.
+    move=> ?; right.
+    by move=> /map_empty.
   Qed.
 
   Lemma setP {T} (m: t T) x y (v:T) :
     m.[x <- v].[y] = if x == y then Some v else m.[y].
   Proof.
-    rewrite /set /get /=;case: eqP=> H.
-    + by rewrite Facts.add_eq_o // H cmp_refl.
-    by rewrite Facts.add_neq_o // => H1;apply H;apply cmp_eq.
+    rewrite /set /get /=.
+    case: eqP.
+    + by move=> <-; rewrite lookup_insert.
+    move=> ?.
+    by rewrite lookup_insert_ne.
   Qed.
 
   Lemma setP_eq {T} (m: t T) x (v:T) : m.[x <- v].[x] = Some v.
   Proof. by rewrite setP eq_refl. Qed.
 
-  Lemma setP_neq {T} (m: t T) x y (v:T) : x != y -> m.[x <- v].[y] = m.[y].
+  Lemma setP_neq {T} (m: t T) (x y:K.t) (v:T) : x != y -> m.[x <- v].[y] = m.[y].
   Proof. by rewrite setP=> /negPf ->. Qed.
 
   Lemma removeP {T} (m: t T) x y:
     (remove m x).[y] = if x == y then None else m.[y].
   Proof.
-    rewrite /remove/get Facts.remove_o.
-    case: Ordered.eq_dec.
-    + by move=> /cmp_eq <-;rewrite eq_refl.
-    move=> Hneq;have -> // : (x == y) = false.
-    by case : (x =P y) => // ?;subst;elim Hneq; exact: Ordered.eq_refl.
+    rewrite /remove /get.
+    case: eqP.
+    + by move=> <-; rewrite lookup_delete.
+    move=> ?.
+    by rewrite lookup_delete_ne.
   Qed.
 
   Lemma removeP_eq {T} (m: t T) x: (remove m x).[x] = None.
@@ -377,21 +309,18 @@ Module Mmake (K':CmpType) <: MAP.
 
   Lemma mapP {T1 T2} (f:T1 -> T2) (m:t T1) (x:K.t):
     (map f m).[x] = omap f m.[x].
-  Proof. by rewrite /map /get Facts.map_o. Qed.
+  Proof. by rewrite /map /get lookup_fmap. Qed.
 
   Lemma mapiP {T1 T2} (f:K.t -> T1 -> T2) (m:t T1) (x:K.t):
     (mapi f m).[x] = omap (f x) m.[x].
   Proof.
-    by rewrite /mapi /get Facts.mapi_o // => ??? /cmp_eq ->.
+    by rewrite /mapi /get map_lookup_imap.
   Qed.
 
   Lemma filter_mapP {T1 T2} (f:K.t -> T1 -> option T2) (m:t T1) (x:K.t):
     (filter_map f m).[x] = obind (f x) m.[x].
   Proof.
-    rewrite /filter_map /= /get /Map.find Map.Raw.Proofs.map_option_find.
-    + by case Map.Raw.find.
-    + by move=> ??? h; rewrite (cmp_eq h).
-    by  apply Map.is_bst.
+    by rewrite /filter_map /get map_lookup_imap.
   Qed.
 
   Lemma map2P {T1 T2 T3} (f:K.t -> option T1 -> option T2 -> option T3)
@@ -399,139 +328,161 @@ Module Mmake (K':CmpType) <: MAP.
     f x None None = None ->
     (map2 f m1 m2).[x] = f x m1.[x] m2.[x].
   Proof.
-    move=> Hnone.
-    case: (boolP (Map.mem x m1 || Map.mem x m2)).
-    + move=> /orP;rewrite /is_true -!Facts.mem_in_iff /Map.In !Map.Raw.Proofs.In_alt.
-      apply Map.Raw.Proofs.map2_opt_1 => //=.
-      + by apply Map.Raw.Proofs.map_option_bst=> ??? /cmp_eq ->.
-      + by apply Map.Raw.Proofs.map_option_bst=> ??? /cmp_eq ->.
-      + by move=> ???;apply Map.Raw.Proofs.map_option_find=>// ??? /cmp_eq ->.
-      + by move=> ???;apply Map.Raw.Proofs.map_option_find=>// ??? /cmp_eq ->.
-      + by move=> ???? /cmp_eq ->.
-      + by apply Map.is_bst.
-      by apply Map.is_bst.
-    rewrite !Facts.mem_find_b /get;case H1: Map.find;case H2: Map.find=>//= _.
-    case H3:Map.find=> //; have : Map.In x (map2 f m1 m2).
-    + by rewrite Facts.in_find_iff H3.
-    rewrite /map2 /Map.In /= Map.Raw.Proofs.In_alt=> /(@Map.Raw.Proofs.map2_opt_2 _ _ _ f).
-    rewrite -!Map.Raw.Proofs.In_alt -/(Map.In x m1) -/(Map.In x m2) !Facts.in_find_iff.
-    rewrite H1 H2 => -[] //.
-    + by apply Map.Raw.Proofs.map_option_bst=> ??? /cmp_eq ->.
-    + by apply Map.Raw.Proofs.map_option_bst=> ??? /cmp_eq ->.
-    + by move=> ???;apply Map.Raw.Proofs.map_option_find=>// ??? /cmp_eq ->.
-    + by move=> ???;apply Map.Raw.Proofs.map_option_find=>// ??? /cmp_eq ->.
-    + by apply Map.is_bst.
-    by apply Map.is_bst.
+    move=> Hnone. rewrite /map2 /get.
+    set g1 := fun k v1 acc => _.
+    set g2 := fun k v2 acc => _.
+    rewrite lookup_union.
+    have [h11 h12]:
+      (m1 !! x <> None -> map_fold g1 ∅ m1 !! x = f x (m1 !! x) (m2 !! x)) /\
+      (m1 !! x = None -> map_fold g1 ∅ m1 !! x = None).
+    + move=> {g2}.
+      induction m1 using map_first_key_ind => //.
+      case: IHm1 => ih1 ih2.
+      split.
+      + rewrite (map_fold_insert_first_key g1 _ _ _ _ H H0) {1}/g1.
+        case h: (f _ _ _) => [x3|].
+        + case: (x =P i).
+          + move=> ?; subst x.
+            by rewrite !lookup_insert.
+          move=> hneq.
+          by rewrite !lookup_insert_ne.
+        case: (x =P i).
+        + move=> ?; subst x.
+          rewrite !lookup_insert h.
+          by move=> _; apply ih2.
+        move=> hneq.
+        rewrite !lookup_insert_ne //.
+      rewrite (map_fold_insert_first_key g1 _ _ _ _ H H0) {1}/g1.
+      case: (x =P i).
+      + move=> ?; subst x.
+        by rewrite lookup_insert.
+      move=> hneq.
+      by case: (f _ _ _) => [x3|]; rewrite !lookup_insert_ne //.
+    have [h21 h22]:
+      (m2 !! x <> None -> map_fold g2 ∅ m2 !! x = f x (m1 !! x) (m2 !! x)) /\
+      (m2 !! x = None -> map_fold g2 ∅ m2 !! x = None).
+    + move=> {g1 h11 h12}.
+      induction m2 using map_first_key_ind => //.
+      case: IHm2 => ih1 ih2.
+      split.
+      + rewrite (map_fold_insert_first_key g2 _ _ _ _ H H0) {1}/g2.
+        case h: (f _ _ _) => [x3|].
+        + case: (x =P i).
+          + move=> ?; subst x.
+            by rewrite !lookup_insert.
+          move=> hneq.
+          by rewrite !lookup_insert_ne.
+        case: (x =P i).
+        + move=> ?; subst x.
+          rewrite !lookup_insert h.
+          by move=> _; apply ih2.
+        move=> hneq.
+        rewrite !lookup_insert_ne //.
+      rewrite (map_fold_insert_first_key g2 _ _ _ _ H H0) {1}/g2.
+      case: (x =P i).
+      + move=> ?; subst x.
+        by rewrite lookup_insert.
+      move=> hneq.
+      by case: (f _ _ _) => [x3|]; rewrite !lookup_insert_ne //.
+    case: (m1 !! x) (m2 !! x) h11 h12 h21 h22 => [x1|] [x2|] h11 h12 h21 h22.
+    + rewrite h11 // h21 //.
+      by case: (f).
+    + by rewrite h11 // h22 // option_union_right_id.
+    + by rewrite h12 // h21 // option_union_left_id.
+    by rewrite h12 // h22 //.
   Qed.
 
   Lemma elementsP : forall {T:eqType} (kv:K.t * T) m,
     reflect (m.[kv.1] = Some kv.2) (kv \in elements m).
   Proof.
-    rewrite /elements;move=> T kv m.
-    assert(InA (Map.eq_key_elt (elt:=T)) (kv.1, kv.2) (Map.elements m) <->
-           (kv \in Map.elements m)) as step.
-    + elim: (Map.elements m) => [|x xs Hrec].
-      + by rewrite in_nil; split => // /InAE.
-      rewrite in_cons; split=> [| /orP [/eqP|]].
-      + case/InAE.
-        * rewrite /Map.eq_key_elt /Map.Raw.Proofs.PX.eqke /= => [].
-          case: kv x {Hrec} => k v [xk xv] /= [] /= /(@cmp_eq _ _ K.cmpO) -> ->.
-          by rewrite eq_refl.
-        by move/Hrec ->; exact: orbT.
-      + move => ->; constructor;case x;reflexivity.
-      by move => H; apply /InA_cons_tl /Hrec.
-    revert step.
-    case: (boolP (kv \in Map.elements m)) => Hin [Hf Ht];constructor.
-    + move: (Ht (erefl _)).
-      by move=> /(Facts.elements_mapsto_iff m kv.1 kv.2) /Facts.find_mapsto_iff.
-    by move=>  /Facts.find_mapsto_iff /(Facts.elements_mapsto_iff m kv.1 kv.2) /Hf.
+    rewrite /elements /get; move=> T [k v] m /=.
+    apply iff_reflect.
+    rewrite -/(is_true _) -(rwP (xseq.InP _ _)) -elem_of_list_In elem_of_reverse.
+    symmetry.
+    exact: elem_of_map_to_list.
   Qed.
 
   Lemma elementsIn : forall T (kv:K.t * T) m,
      List.In kv (elements m) <-> m.[kv.1] = Some kv.2.
   Proof.
-    move=> T kv m;rewrite /get -Facts.find_mapsto_iff Facts.elements_mapsto_iff InA_alt.
-    split => [hin | [kv' [heq hin]]].
-    + exists kv;split => //;case: (kv) => ??; split => //=.
-      apply cmp_refl.
-    have -> //: kv = kv'.
-    move=> {hin};case: kv kv' heq => k v [k' v'] [/= h ->].
-    by have -> := cmp_eq h.
+    rewrite /elements /get; move=> T [k v] m /=.
+    rewrite -elem_of_list_In elem_of_reverse.
+    exact: elem_of_map_to_list.
+  Qed.
+
+  Lemma uniq_NoDup {T:eqType} (s:seq T) :
+    reflect (NoDup s) (uniq s).
+  Proof.
+    elim: s => [|x s ih] /=.
+    + by left; constructor.
+    rewrite NoDup_cons.
+    case: (@idP (x \notin s)) => h.
+    + apply (equivP ih).
+      rewrite elem_of_list_In (rwP (xseq.InP _ _)) (rwP negP) h.
+      by intuition.
+    right.
+    rewrite elem_of_list_In (rwP (xseq.InP _ _)) (rwP negP).
+    intuition.
   Qed.
 
   Lemma elementsU T (m:t T): uniq [seq x.1 | x <- (elements m)].
   Proof.
-    rewrite /elements; elim: (Map.elements m) (Map.elements_3w m) => [|p ps Hrec] //=.
-    case/NoDupAE => Hp Hps.
-    rewrite andbC Hrec //= {Hrec Hps}.
-    apply /negP=> H; apply: Hp.
-    elim: ps H => [|p' ps Hrec] //=;rewrite in_cons=> /orP [/eqP | ] H.
-    + apply InA_cons_hd.
-      by rewrite /Map.eq_key /Map.Raw.Proofs.PX.eqk H; apply cmp_refl.
-    by apply /InA_cons_tl/Hrec.
+    rewrite /elements.
+    apply /uniq_NoDup.
+    rewrite reverse_Permutation.
+    exact: NoDup_fst_map_to_list.
   Qed.
 
   Lemma foldP : forall {T A} (f:K.t -> T -> A -> A) m a,
     fold f m a = foldl (fun a (kv:K.t * T) => f kv.1 kv.2 a) a (elements m).
   Proof.
-    move=> T A f m a;rewrite /fold Map.fold_1 /elements.
-    by elim: Map.elements a=> //=.
+    move=> T A f m a; rewrite /fold /elements.
+    rewrite map_fold_foldr foldl_rev.
+    apply foldr_ext => //.
+    by move=> [??].
   Qed.
-
-  Lemma bstE {T} (m: Map.Raw.tree T) :
-    Map.Raw.bst m ->
-    match m with
-    | Map.Raw.Leaf => True
-    | Map.Raw.Node L k _ R _ =>
-        [/\ Map.Raw.bst L, Map.Raw.bst R, Map.Raw.lt_tree k L & Map.Raw.gt_tree k R ]
-    end.
-  Proof. by case. Qed.
-
 
   Lemma allP {T} (f: K.t -> T -> bool) (m: t T) :
     all f m <-> (forall k t, get m k = Some t -> f k t).
   Proof.
-    rewrite /all/get/Map.find; case: m => /=.
-    elim => //= L hL k v R hR s /bstE[] ?? H6 H7; split.
-    - case/andP => /andP[] fkv {}/hL hL {}/hR hR k' v'.
-      case: Ordered.compare => k'k; cycle 2.
-      + exact: hR.
-      + exact: hL.
-      by case => <-; rewrite (cmp_eq k'k).
-    move => h.
-    apply/andP; split; first (apply/andP; split).
-    - have := h k v.
-      have [? ->] := Map.Raw.Proofs.MX.elim_compare_eq (Map.E.eq_refl k).
-      by move => /(_ erefl) -> /=.
-    - rewrite (hL _) // => k' v' k'v'; apply: h.
-      have := Map.Raw.Proofs.MX.elim_compare_lt (H6 k' (Map.Raw.Proofs.find_in _)).
-      by rewrite k'v' => - [] // ? ->.
-    rewrite (hR _) // => k' v' k'v'; apply: h.
-    have := Map.Raw.Proofs.MX.elim_compare_gt (H7 k' (Map.Raw.Proofs.find_in _)).
-    by rewrite k'v' => - [] // ? ->.
+    rewrite /all/get.
+    induction m using map_first_key_ind => //.
+    rewrite (map_fold_insert_first_key _ _ _ _ _ H H0) -(rwP andP) IHm.
+    split.
+    + move=> [h1 h2] k v.
+      case: (k =P i).
+      + by move=> ->; rewrite lookup_insert => -[<-].
+      move=> ?; rewrite lookup_insert_ne //.
+      by apply h1.
+    move=> h; split.
+    + move=> k v hk.
+      apply h.
+      by rewrite lookup_insert_ne //; congruence.
+    apply h.
+    by rewrite lookup_insert.
   Qed.
 
   Lemma hasP {T} (f: K.t -> T -> bool) (m: t T) :
     has f m <-> (exists k t, get m k = Some t /\ f k t).
   Proof.
-    rewrite /has/get/Map.find; case: m => /=.
-    elim => /=.
-    + by move=> _; split => // -[] ? [] ? [].
-    move=> L hL k v R hR s /bstE[] ?? H6 H7; split.
-    + move=> /orP [/orP [] | ].
-      + move=> ?; exists k, v.
-        by have [? ->] := Map.Raw.Proofs.MX.elim_compare_eq (Map.E.eq_refl k).
-      + move=> /hL [] // k' [t] [] h1 h2; exists k', t.
-        have := Map.Raw.Proofs.MX.elim_compare_lt (H6 k' (Map.Raw.Proofs.find_in _)).
-        by rewrite h1 => -[] // ? ->.
-      move=> /hR [] // k' [t] [] h1 h2; exists k', t.
-      have := Map.Raw.Proofs.MX.elim_compare_gt (H7 k' (Map.Raw.Proofs.find_in _)).
-      by rewrite h1 => -[] // ? ->.
-    move => [k'] [t] [].
-    case: Ordered.compare => k'k; cycle 2. 
-    + by move=> hs hf; apply/orP; right; rewrite hR; eauto.
-    + by move=> hs hf; apply/orP; left; apply/orP; right; rewrite hL; eauto.
-    by rewrite (cmp_eq k'k) => -[<-] ->.
+    rewrite /has/get.
+    induction m using map_first_key_ind.
+    + by split=> // -[? [? [??]]].
+    rewrite (map_fold_insert_first_key _ _ _ _ _ H H0) -(rwP orP) IHm.
+    split.
+    + case=> h.
+      + move: h => [k [v [hk1 hk2]]].
+        exists k, v; split=> //.
+        by rewrite lookup_insert_ne //; congruence.
+      exists i, x; split=> //.
+      by rewrite lookup_insert.
+    move=> [k [v [hk1 hk2]]].
+    case: (k =P i).
+    + move=> ?; subst k.
+      right.
+      by move: hk1; rewrite lookup_insert => -[->].
+    move=> ?; left; exists k, v; split=> //.
+    by move: hk1; rewrite lookup_insert_ne //.
   Qed.
 
   Lemma incl_defP {T1 T2} (f:K.t -> T1 -> bool) (f2:K.t -> T1 -> T2 -> bool) (m1: t T1) (m2: t T2) :
@@ -543,34 +494,25 @@ Module Mmake (K':CmpType) <: MAP.
        | Some t1, Some t2 => f2 k t1 t2
        end).
   Proof.
-    rewrite /incl_def/get/Map.find; case: m2 => /=; case: m1 => /=.
-    elim => //= L hL k v R hR s /bstE[] ?? H6 H7  t2 hbst2.
-    have := Map.Raw.Proofs.split_bst k hbst2.
-    case hsplit: Map.Raw.split => [t2l oe2 t2r] /= [] hbst2l hbst2r.
+    rewrite /incl_def/get.
+    induction m1 using map_first_key_ind => //.
+    rewrite (map_fold_insert_first_key _ _ _ _ _ H H0) -(rwP andP) {}IHm1.
     split.
-    - move=> /and3P [] hoe2 {}/hL hL {}/hR hR k'.
-      rewrite (Map.Raw.Proofs.split_find k k' hbst2) hsplit /=.
-      case: Ordered.compare => k'k.
-      + exact: hL.
-      + by rewrite (cmp_eq k'k).
-      + exact: hR.
-    move=> h.
-    apply/and3P; split.
-    - have := h k.
-      rewrite (Map.Raw.Proofs.split_find k k hbst2) hsplit /=.
-      by have [? ->] := Map.Raw.Proofs.MX.elim_compare_eq (Map.E.eq_refl k).
-    - apply hL => // k'.
-      case heq: Map.Raw.find => //.
-      have := h k'.
-      rewrite (Map.Raw.Proofs.split_find k k' hbst2) hsplit /= heq.
-      have := Map.Raw.Proofs.MX.elim_compare_lt (H6 k' (Map.Raw.Proofs.find_in _)).
-      by rewrite heq => -[] // _ ->.
-    apply hR => // k'.
-    case heq: Map.Raw.find => //.
-    have := h k'.
-    rewrite (Map.Raw.Proofs.split_find k k' hbst2) hsplit /= heq.
-    have := Map.Raw.Proofs.MX.elim_compare_gt (H7 k' (Map.Raw.Proofs.find_in _)).
-    by rewrite heq => -[] // _ ->.
+    + move=> [h1 h2] k.
+      case: (k =P i).
+      + move=> ?; subst k.
+        by rewrite lookup_insert.
+      move=> ?.
+      by rewrite lookup_insert_ne //.
+    move=> h; split.
+    + move=> k.
+      case: (k =P i).
+      + move=> ?; subst k.
+        by rewrite H.
+      move=> ?; move: (h k).
+      by rewrite lookup_insert_ne //.
+    move: (h i).
+    by rewrite lookup_insert.
   Qed.
 
   Lemma inclP {T1 T2} (f:K.t -> T1 -> T2 -> bool) (m1: t T1) (m2: t T2) :
