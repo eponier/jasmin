@@ -1,5 +1,6 @@
 (* ** Imports and settings *)
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype.
+From stdpp Require Import countable.
 Require Import Uint63 strings utils gen_map tagged wsize.
 Require Import Utf8.
 
@@ -11,7 +12,10 @@ Module Type CORE_IDENT.
 
   Parameter t  : Type.
   Parameter tag : t -> int.
-  Parameter tagI : injective tag.
+  Parameter rtag : int -> t.
+
+  Parameter tagI : Cancel eq rtag tag.
+  Existing Instance tagI.
 
   Parameter id_name : t -> string.
   Parameter id_kind : t -> wsize.v_kind.
@@ -26,8 +30,9 @@ Module Cident : CORE_IDENT.
 
   Definition t : Type := int.
   Definition tag (x : t) : int := x.
+  Definition rtag (x : int) : t := x.
 
-  Lemma tagI : injective tag.
+  Lemma tagI : Cancel eq rtag tag.
   Proof. done. Qed.
 
   Definition id_name of t : string := "".

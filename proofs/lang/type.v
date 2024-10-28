@@ -82,7 +82,7 @@ Proof.
   + by rewrite (@cmp_eq _ _ positiveO _ _ h).
   by rewrite (@cmp_eq _ _ wsizeO _ _ h).
 Qed.
-
+(*
 Module CmpStype.
 
   Definition t : eqType := stype.
@@ -92,102 +92,7 @@ Module CmpStype.
   Definition cmpO : Cmp cmp := stypeO.
 
 End CmpStype.
-
-Module CEDecStype.
-
-  Definition t : eqType := stype.
-
-  Fixpoint pos_dec (p1 p2:positive) : {p1 = p2} + {True} :=
-    match p1 as p1' return {p1' = p2} + {True} with
-    | xH =>
-      match p2 as p2' return {xH = p2'} + {True} with
-      | xH => left (erefl xH)
-      | _  => right I
-      end
-    | xO p1' =>
-      match p2 as p2' return {xO p1' = p2'} + {True} with
-      | xO p2' =>
-        match pos_dec p1' p2' with
-        | left eq =>
-          left (eq_rect p1' (fun p => xO p1' = xO p) (erefl (xO p1')) p2' eq)
-        | _ => right I
-        end
-      | _ => right I
-      end
-    | xI p1' =>
-      match p2 as p2' return {xI p1' = p2'} + {True} with
-      | xI p2' =>
-        match pos_dec p1' p2' with
-        | left eq =>
-          left (eq_rect p1' (fun p => xI p1' = xI p) (erefl (xI p1')) p2' eq)
-        | _ => right I
-        end
-      | _ => right I
-      end
-    end.
-
-  Definition eq_dec (t1 t2:t) : {t1 = t2} + {True} :=
-    match t1 as t return {t = t2} + {True} with
-    | sbool =>
-      match t2 as t0 return {sbool = t0} + {True} with
-      | sbool => left (erefl sbool)
-      | _     => right I
-      end
-    | sint =>
-      match t2 as t0 return {sint = t0} + {True} with
-      | sint => left (erefl sint)
-      | _     => right I
-      end
-    | sarr n1 =>
-      match t2 as t0 return {sarr n1 = t0} + {True} with
-      | sarr n2 =>
-        match pos_dec n1 n2 with
-        | left eqn => left (f_equal sarr eqn)
-        | right _ => right I
-        end
-      | _          => right I
-      end
-    | sword w1 =>
-      match t2 as t0 return {sword w1 = t0} + {True} with
-      | sword w2 =>
-        match wsize_eq_dec w1 w2 with
-        | left eqw => left (f_equal sword eqw)
-        | right _ => right I
-        end
-      | _     => right I
-      end
-    end.
-
-  Lemma pos_dec_r n1 n2 tt: pos_dec n1 n2 = right tt -> n1 != n2.
-  Proof.
-    case: tt.
-    elim: n1 n2 => [n1 Hrec|n1 Hrec|] [n2|n2|] //=.
-    + by case: pos_dec (Hrec n2) => //= -[] /(_ (erefl _)).
-    by case: pos_dec (Hrec n2) => //= -[] /(_ (erefl _)).
-  Qed.
-
-  Lemma eq_dec_r t1 t2 tt: eq_dec t1 t2 = right tt -> t1 != t2.
-  Proof.
-    case: tt;case:t1 t2=> [||n|w] [||n'|w'] //=.
-    + case: pos_dec (@pos_dec_r n n' I) => [Heq _ | [] neq ] //=.
-      move => _; apply/eqP => -[].
-      by move/eqP: (neq erefl).
-    case: wsize_eq_dec => // eqw.
-    by move=> _;apply /eqP;congruence.
-  Qed.
-
-End CEDecStype.
-
-Module Mt := DMmake CmpStype CEDecStype.
-
-Declare Scope mtype_scope.
-Delimit Scope mtype_scope with mt.
-Notation "m .[ x ]" := (@Mt.get _ m x) : mtype_scope.
-Notation "m .[ x  <- v ]" := (@Mt.set _ m x v) : mtype_scope.
-Arguments Mt.get P m%mtype_scope k.
-Arguments Mt.set P m%mtype_scope k v.
-
-
+*)
 Definition is_sbool t := t == sbool.
 
 Lemma is_sboolP t : reflect (t=sbool) (is_sbool t).

@@ -1,9 +1,9 @@
 (** This module defines common definitions related to the “one-varmap” intermediate language.
 This language is structured (as jasmin-source) and is used just before linearization: there is a single environment (varmap) shared across function calls.
 *)
+From mathcomp Require Import ssreflect ssrfun ssrbool.
 Require Import expr compiler_util.
 Import Utf8.
-From mathcomp Require Import ssreflect ssrfun ssrbool.
 
 Set Implicit Arguments.
 Unset Strict Implicit.

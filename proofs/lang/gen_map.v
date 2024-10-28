@@ -632,7 +632,159 @@ Module Mz := Mmake CmpZ.
  * -------------------------------------------------------------------------- *)
 
 Module Smake (Import K:CmpType).
+  Definition elt := K.t.
   Definition t := gset K.t.
+
+  Definition empty : t := empty.
+  Definition is_empty (s : t) : bool := bool_decide (s = ∅).
+  Definition mem (x : elt) (s : t) : bool := bool_decide (x ∈ s).
+  Definition add (x : elt) (s : t) : t := union (singleton x) s.
+  Definition remove (x : elt) (s : t) : t := difference s (singleton x).
+  Definition singleton (x : elt) : t := singleton x.
+  Definition union (s1 s2 : t) : t := union s1 s2.
+  Definition inter (s1 s2 : t) : t := intersection s1 s2.
+  Definition diff (s1 s2 : t) : t := difference s1 s2.
+  Definition equal (s1 s2 : t) : bool := bool_decide (s1 = s2).
+  Definition subset (s1 s2 : t) : bool := bool_decide (subseteq s1 s2).
+  Definition fold {A} (f : elt -> A -> A) (s : t) (a : A) : A := set_fold f a s.
+  Definition for_all (f : elt -> bool) (s : t) : bool := bool_decide (set_Forall f s). (* perf? *)
+  Definition exists_ (f : elt -> bool) (s : t) : bool := bool_decide (set_Exists f s). (* perf? *)
+  Definition filter (f : elt -> bool) (s : t) : t := base.filter f s.
+  Definition partition (f : elt -> bool) (s : t) : t * t := (filter f s, filter (negb ∘ f) s).
+  Definition cardinal (s : t) : nat := base.size s.
+  Definition elements (s : t) : seq elt := reverse (elements s).
+  Definition choose (s : t) : option elt :=
+    match base.elements s with | [::] => None | x :: _ => Some x end.
+
+  Definition In (x : elt) (s : t) : Prop := x ∈ s.
+  Definition Equal s s' := forall a : elt, In a s <-> In a s'.
+  Definition Subset s s' := forall a : elt, In a s -> In a s'.
+  Definition Empty s := forall a : elt, ~ In a s.
+  Definition For_all (P : elt -> Prop) s := forall x, In x s -> P x.
+  Definition Exists (P : elt -> Prop) s := exists x, In x s /\ P x.
+
+  Lemma mem_spec s x : mem x s = true <-> In x s.
+  Proof. by rewrite /mem /In bool_decide_eq_true. Qed.
+
+  Lemma equal_spec s1 s2 : equal s1 s2 = true <-> Equal s1 s2.
+  Proof.
+    rewrite /equal /Equal /In bool_decide_eq_true.
+    by set_solver.
+  Qed.
+
+  Lemma subset_spec s1 s2 : subset s1 s2 = true <-> Subset s1 s2.
+  Proof.
+    rewrite /subset /Subset /In bool_decide_eq_true.
+    by set_solver.
+  Qed.
+
+  Lemma empty_spec : Empty empty.
+  Proof.
+    rewrite /Empty /In /empty.
+    by set_solver.
+  Qed.
+
+  Lemma is_empty_spec s : is_empty s = true <-> Empty s.
+  Proof.
+    rewrite /is_empty /Empty /In bool_decide_eq_true.
+    by set_solver.
+  Qed.
+
+  Lemma add_spec s x y : In y (add x s) <-> y = x \/ In y s.
+  Proof.
+    rewrite /add /In.
+    by set_solver.
+  Qed.
+
+  Lemma remove_spec s x y : In y (remove x s) <-> In y s /\ y <> x.
+  Proof.
+    rewrite /remove /In.
+    by set_solver.
+  Qed.
+
+  Lemma singleton_spec x y : In y (singleton x) <-> y = x.
+  Proof.
+    rewrite /singleton /In.
+    by set_solver.
+  Qed.
+
+  Lemma union_spec s1 s2 x : In x (union s1 s2) <-> In x s1 \/ In x s2.
+  Proof.
+    rewrite /union /In.
+    by set_solver.
+  Qed.
+
+  Lemma inter_spec s1 s2 x : In x (inter s1 s2) <-> In x s1 /\ In x s2.
+  Proof.
+    rewrite /inter /In.
+    by set_solver.
+  Qed.
+
+  Lemma diff_spec s1 s2 x : In x (diff s1 s2) <-> In x s1 /\ ~ In x s2.
+  Proof.
+    rewrite /diff /In.
+    by set_solver.
+  Qed.
+
+  Lemma foldl_fold_left A (f : A -> elt -> A) (a : A) s :
+    foldl f a s = fold_left f s a.
+  Proof. by elim: s a => /=. Qed.
+
+  Lemma fold_spec s (A : Type) (i : A) (f : elt -> A -> A) :
+    fold f s i = fold_left (flip f) (elements s) i.
+  Proof.
+    by rewrite /fold /set_fold /elements -foldl_fold_left foldl_rev.
+  Qed.
+
+  Lemma cardinal_spec s : cardinal s = length (elements s).
+  Proof.
+    by rewrite /cardinal /base.size /set_size /elements length_reverse.
+  Qed.
+
+  Lemma filter_spec s x (f : elt -> bool) : Proper (eq ==> eq) f ->
+    (In x (filter f s) <-> In x s /\ f x = true).
+  Proof.
+    rewrite /In /filter.
+    by set_solver.
+  Qed.
+
+  Lemma for_all_spec s (f : elt -> bool) : Proper (eq ==> eq) f ->
+    (for_all f s = true <-> For_all (fun x => f x = true) s).
+  Proof.
+    rewrite /for_all /For_all /In bool_decide_eq_true.
+    by set_solver.
+  Qed.
+
+  Lemma exists_spec s f : Proper (eq ==> eq) f ->
+    (exists_ f s = true <-> Exists (fun x => f x = true) s).
+  Proof.
+    rewrite /exists_ /Exists /In bool_decide_eq_true.
+    by set_solver.
+  Qed.
+
+  Lemma partition_spec1 s f : Proper (eq ==> eq) f ->
+    Equal (fst (partition f s)) (filter f s).
+  Proof. done. Qed.
+
+  Lemma partition_spec2 s f : Proper (eq ==> eq) f ->
+    Equal (snd (partition f s) ) (filter (fun x => negb (f x)) s).
+  Proof. done. Qed.
+
+  Lemma choose_spec1 s x : choose s = Some x -> In x s.
+  Proof.
+    rewrite /choose /elements /In -elem_of_elements.
+    case: base.elements => //.
+    by set_solver.
+  Qed.
+
+  Lemma choose_spec2 s : choose s = None -> Empty s.
+  Proof.
+    rewrite /choose /elements /Empty /In.
+    move=> h ?; rewrite -elem_of_elements.
+    case: base.elements h => //.
+    by set_solver.
+  Qed.
+
 End Smake.
 
 Module PosSet.

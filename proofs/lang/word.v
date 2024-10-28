@@ -748,8 +748,9 @@ Proof.
   rewrite /wsmul /wdwords high_bits_wbase.
   set p := _ * wsigned y.
   have p_range : wmin_signed sz * wmax_signed sz <= p <= wmin_signed sz * wmin_signed sz.
-  { subst p; case: sz x y x_range y_range => x y;
-    rewrite /wmin_signed /wmax_signed /=;
+  { (* why do the changes I did have an impact on the computation???? *)
+    subst p; case: sz x y x_range y_range => x y;
+    rewrite /wmin_signed /wmax_signed /= /modulus /two_power_nat /=;
     nia. }
   have hi_range : wmin_signed sz <= p / wbase sz <= wmax_signed sz.
   { move: sz {x y x_range y_range} p p_range => sz p p_range.
@@ -789,7 +790,7 @@ Proof.
   apply/eqP/eq_from_wbit_n.
   move=> i.
   rewrite wshlE; last by [].
-  rewrite /wsize_bits /=.
+  rewrite /wsize_bits /= /Z.to_nat /=.
   rewrite SuccNat2Pos.id_succ.
   case hi: (_ <= _ <= _)%N; last by rewrite w0E.
   by move: hi => /andP [] /ltn_geF ->.
@@ -2149,7 +2150,7 @@ Proof.
 
   rewrite Z.shiftl_mul_pow2; last done.
   split; first lia.
-  move: hwn; rewrite !wbaseE /=.
-  change (Z.pow_pos 2 128) with (Z.pow_pos 2 64 * Z.pow_pos 2 64).
+  move: hwn; rewrite !wbaseE /= /nat127 /nat63 /nat31 /nat15 /nat7 /=.
+  change (2 ^ Z.of_nat 128) with (2 ^ Z.of_nat 64 * 2 ^ Z.of_nat 64).
   lia.
 Qed.

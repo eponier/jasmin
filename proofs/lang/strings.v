@@ -57,7 +57,7 @@ Proof.
 Qed.
 
 HB.instance Definition _ := hasDecEq.Build string string_eqP.
-
+(*
 Fixpoint string_cmp s1 s2 :=
   match s1, s2 with
   | EmptyString , String _  _  => Lt
@@ -81,11 +81,10 @@ Qed.
 
 Module CmpString.
 
-  Definition t : eqType := string.
-
-  Definition cmp : t -> t -> comparison := string_cmp.
-
-  Definition cmpO : Cmp cmp := stringO.
+  Import gmap.
+  Definition t := string.
+  Definition EqD : EqDecision t := _.
+  Definition C : Countable t := _.
 
 End CmpString.
 
@@ -96,4 +95,4 @@ Notation "m .[ x ]" := (@Ms.get _ m x) : mstring_scope.
 Notation "m .[ x  <- v ]" := (@Ms.set _ m x v) : mstring_scope.
 Arguments Ms.get T%type_scope m%mstring_scope k.
 Arguments Ms.set T%type_scope m%mstring_scope k v.
-
+*)

@@ -2,6 +2,8 @@
 Require Import Setoid Morphisms.
 From HB Require Import structures.
 From mathcomp Require Import ssreflect ssrfun ssrbool seq eqtype.
+From stdpp Require Import countable.
+Import ssrfun seq.
 Require Import strings utils gen_map type ident tagged.
 Require Import Utf8.
 
@@ -16,8 +18,9 @@ Module FunName : TaggedCore.
   Import PrimInt63.
   Definition t : Type := int.
   Definition tag (x : t) : int := x.
+  Definition rtag (x : int) : t := x.
 
-  Lemma tagI : injective tag.
+  Lemma tagI : Cancel eq rtag tag.
   Proof. done. Qed.
 
 End FunName.
@@ -29,8 +32,8 @@ Module TFunName <: TAGGED with Definition t := FunName.t
 
 Module Mf  := TFunName.Mt.
 Module Sf  := TFunName.St.
-Module SfP := TFunName.StP.
-Module SfD := TFunName.StD.
+(* Module SfP := TFunName.StP. *)
+(* Module SfD := TFunName.StD. *)
 
 Definition funname := FunName.t.
 
@@ -43,8 +46,8 @@ Definition get_fundef {T} (p: seq (funname * T)) (f: funname) :=
 Module MvMake (I:IDENT).
 
   Import I Mid.
-#[global]
-  Existing Instance K.cmpO.
+(* #[global]
+  Existing Instance K.cmpO. *)
 
   Record var := Var { vtype : stype; vname : ident }.
 
@@ -61,6 +64,63 @@ Module MvMake (I:IDENT).
 
   HB.instance Definition _ := hasDecEq.Build var var_eqP.
 
+  Instance EqD : EqDecision var.
+  Proof.
+    by move=> ??; apply: reflect_dec (var_eqP _ _).
+  Defined.
+
+  Import K.
+
+  (* TODO: move to type.v *)
+  Instance stype_EqD : EqDecision stype.
+  Proof.
+    by move=> ??; apply: reflect_dec (stype_axiom _ _).
+  Defined.
+
+  Definition stype_encode t : positive :=
+    match t with
+    | sbool => 1
+    | sint => 2
+    | sword ws =>
+      match ws with
+      | U8 => 3
+      | U16 => 4
+      | U32 => 5
+      | U64 => 6
+      | U128 => 7
+      | U256 => 8
+      end
+    | sarr n => 8 + n
+    end.
+
+  Definition stype_decode (p :positive) : option stype :=
+    Some
+      (if p == 1 then sbool
+      else if p == 2 then sint
+      else if p == 3 then sword U8
+      else if p == 4 then sword U16
+      else if p == 5 then sword U32
+      else if p == 6 then sword U64
+      else if p == 7 then sword U128
+      else if p == 8 then sword U256
+      else sarr (p - 8))%positive.
+
+  Instance stype_C : Countable stype.
+  Proof.
+    exists stype_encode stype_decode.
+    case => //=; last by case.
+    move=> p; rewrite /stype_decode.
+    do 8 (case: eqP; [lia|move=> _]).
+    f_equal; f_equal. lia.
+  Defined.
+
+  Instance C : Countable var.
+  Proof.
+    apply (inj_countable' (fun (v:var) => let (t1,n1) := v in (t1,n1)) (fun '(t,n) => Var t n)).
+    by case.
+  Defined.
+
+(*
   Definition var_cmp (x y:var) :=
     Lex (stype_cmp x.(vtype) y.(vtype)) (K.cmp x.(vname) y.(vname)).
 
@@ -72,18 +132,18 @@ Module MvMake (I:IDENT).
     + by apply lex_trans=> /=; apply cmp_ctrans.
     by move=> /lex_eq [] /= /(@cmp_eq _ _ stypeO) -> /(@cmp_eq _ _ K.cmpO) ->.
   Qed.
-
+*)
   Lemma var_surj (x:var) : x = Var x.(vtype) x.(vname).
   Proof. by case: x. Qed.
 
 End MvMake.
 
 Module Var := MvMake Ident.
-Export Var.
+Export Var. (*
 Notation var   := Var.var.
 Notation vtype := Var.vtype.
 Notation vname := Var.vname.
-Notation Var   := Var.Var.
+Notation Var   := Var.Var. *)
 Notation vbool i := {| vtype := sbool; vname := i; |}.
 
 Lemma vtype_diff x x': vtype x != vtype x' -> x != x'.
@@ -125,22 +185,21 @@ Definition is_reg_array x :=
  *
  * -------------------------------------------------------------------- *)
 
-Module CmpVar.
+Module CmpVar <: CmpType.
 
   Definition t : eqType := var.
-
-  Definition cmp : t -> t -> comparison := var_cmp.
-
-  Definition cmpO : Cmp cmp := varO.
+  Definition EqD : EqDecision t := _.
+  Definition C : Countable t := _.
 
 End CmpVar.
+
+From stdpp Require Import gmap.
+Import seq.
 
 (* FIXME: move this *)
 Module SExtra (T : CmpType).
 
 Module Sv := Smake T.
-Module SvP := MSetEqProperties.EqProperties Sv.
-Module SvD := MSetDecide.WDecide Sv.
 
 Lemma Sv_memP x s: reflect (Sv.In x s) (Sv.mem x s).
 Proof.
@@ -150,12 +209,9 @@ Qed.
 
 Lemma Sv_elemsP x s : reflect (Sv.In x s) (x \in Sv.elements s).
 Proof.
-  apply: (equivP idP);rewrite SvD.F.elements_iff.
-  elim: (Sv.elements s) => /= [|v vs H]; split => //=.
-  + by move /SetoidList.InA_nil.
-  + by rewrite inE => /orP [ /eqP -> | /H];auto.
-  case/SetoidList.InA_cons => [ -> |]; rewrite inE ?eq_refl //.
-  by move /H => ->; rewrite orbT.
+  apply: (equivP (xseq.InP _ _)).
+  rewrite /Sv.In /Sv.elements -elem_of_list_In elem_of_reverse.
+  by set_solver.
 Qed.
 
 Lemma Sv_elems_eq x s : Sv.mem x s = (x \in (Sv.elements s)).
@@ -163,18 +219,29 @@ Proof. by apply: sameP (Sv_memP x s) (Sv_elemsP x s). Qed.
 
 Definition disjoint s1 s2 := Sv.is_empty (Sv.inter s1 s2).
 
+Module SvD.
+  Ltac fsetdec :=
+    rewrite
+      /Sv.singleton /Sv.add /Sv.remove /Sv.union /Sv.inter /Sv.diff
+      /Sv.equal /Sv.subset /Sv.mem /Sv.Equal /Sv.Subset /Sv.In
+      /disjoint /Sv.is_empty /Sv.inter
+      /is_true ?bool_decide_eq_true;
+    set_solver.
+End SvD.
+
 #[global]
 Instance disjoint_m :
   Proper (Sv.Equal ==> Sv.Equal ==> eq) disjoint.
 Proof.
-  by move => s1 s1' Heq1 s2 s2' Heq2;rewrite /disjoint Heq1 Heq2.
+  rewrite /Sv.Equal /disjoint /Sv.is_empty /Sv.inter => ??????.
+  apply bool_decide_ext.
+  SvD.fsetdec.
 Qed.
 
 #[global]
 Instance disjoint_sym : Symmetric disjoint.
 Proof.
-  move=> x y h; rewrite/disjoint.
-  erewrite SvD.F.is_empty_m. exact h.
+  move=> x y.
   SvD.fsetdec.
 Qed.
 
@@ -183,28 +250,20 @@ Lemma disjoint_w x x' y :
   disjoint x' y →
   disjoint x y.
 Proof.
-  move=> le e; apply SvD.F.is_empty_iff in e.
-  apply SvD.F.is_empty_iff.
   SvD.fsetdec.
 Qed.
 
 Lemma disjointP s1 s2 :
   reflect (forall x, Sv.In x s1 -> ~ Sv.In x s2) (disjoint s1 s2).
 Proof.
-  case: (@idP (disjoint s1 s2)) => hdisj; constructor.
-  + move=> x h1 h2.
-    move: hdisj; rewrite /disjoint => /Sv.is_empty_spec /(_ x) /Sv.inter_spec.
-    by apply.
-  move=> h; apply: hdisj.
-  rewrite /disjoint.
-  by apply /Sv.is_empty_spec => x /Sv.inter_spec []; apply h.
+  apply (equivP idP).
+  SvD.fsetdec.
 Qed.
 
 Lemma disjoint_diff A B :
   disjoint A B →
   Sv.Equal (Sv.diff B A) B.
 Proof.
-  rewrite /disjoint /is_true Sv.is_empty_spec.
   SvD.fsetdec.
 Qed.
 
@@ -213,15 +272,15 @@ Lemma in_disjoint_diff x a b c :
   Sv.In x b →
   disjoint a (Sv.diff b c) →
   Sv.In x c.
-Proof. rewrite /disjoint /is_true Sv.is_empty_spec; SvD.fsetdec. Qed.
+Proof. SvD.fsetdec. Qed.
 
 (* ---------------------------------------------------------------- *)
 Lemma Sv_mem_add (s: Sv.t) (x y: Sv.elt) :
   Sv.mem x (Sv.add y s) = (x == y) || Sv.mem x s.
 Proof.
   case: eqP.
-  - move => <-; exact: SvP.add_mem_1.
-  move => ne; exact: (SvD.F.add_neq_b _ (not_eq_sym ne)).
+  - move => <- /=. SvD.fsetdec.
+  move=> /= ?; apply/idP/idP; SvD.fsetdec.
 Qed.
 
 Lemma Sv_Subset_union_left (a b c: Sv.t) :
@@ -250,9 +309,8 @@ Lemma sv_of_listE T (f: T → Sv.elt) x m :
 Proof.
   suff h : forall s, Sv.mem x (foldl (λ (s : Sv.t) (r : T), Sv.add (f r) s) s m) = (x \in map f m) || Sv.mem x s by rewrite h orbF.
   elim: m => //= z m hrec s.
-  rewrite hrec in_cons SvD.F.add_b /SvD.F.eqb.
-  case: SvD.F.eq_dec => [-> | /eqP]; first by rewrite eqxx /= orbT.
-  by rewrite eq_sym => /negbTE ->.
+  rewrite hrec in_cons. apply eq_true_iff_eq. rewrite !orb_true_iff -!/(is_true _) -(rwP eqP).
+  SvD.fsetdec.
 Qed.
 
 Lemma sv_of_listP T (f: T → Sv.elt) x m :
@@ -281,11 +339,24 @@ Proof.
   exact: orbT.
 Qed.
 
+Instance eq_equiv : Equivalence Sv.Equal.
+Proof.
+  split=> //.
+  + red; SvD.fsetdec.
+  red; SvD.fsetdec.
+Qed.
+
+Instance union_m : Proper (Sv.Equal ==> Sv.Equal ==> Sv.Equal) Sv.union.
+Proof.
+  move=> ??; rewrite /Sv.Equal => ????.
+  SvD.fsetdec.
+Qed.
+
 Lemma sv_of_list_fold T f l s :
   Sv.Equal (foldl (λ (s : Sv.t) (r : T), Sv.add (f r) s) s l) (Sv.union s (sv_of_list f l)).
 Proof.
   rewrite /sv_of_list; elim: l s => //= [ | a l hrec] s; first by SvD.fsetdec.
-  rewrite hrec (hrec (Sv.add _ _)); SvD.fsetdec.
+  rewrite hrec (hrec (Sv.add _ _)). SvD.fsetdec.
 Qed.
 
 Lemma sv_of_list_cons T (f : T -> _) x l :
@@ -296,7 +367,7 @@ Lemma sv_of_list_eq_ext {X} f g (xs : seq X) :
   (forall x, List.In x xs -> f x = g x) ->
   Sv.Equal (sv_of_list f xs) (sv_of_list g xs).
 Proof.
-  move=> /map_ext h.
+  move=> /utils.map_ext h.
   split; move=> /sv_of_listP ?; apply: sv_of_listP.
   - by rewrite -h.
   by rewrite h.
@@ -306,20 +377,19 @@ Lemma disjoint_subset_diff xs ys :
   disjoint xs ys
   -> Sv.Subset xs (Sv.diff xs ys).
 Proof.
-  move=> /disjoint_sym /disjoint_diff /SvP.MP.equal_sym.
-  exact: SvP.MP.subset_equal.
+  SvD.fsetdec.
 Qed.
 
 Lemma in_add_singleton x y :
   Sv.In x (Sv.add y (Sv.singleton x)).
-Proof. apply: SvD.F.add_2. exact: SvD.F.singleton_2. Qed.
+Proof. SvD.fsetdec. Qed.
 
 Lemma disjoint_equal_l xs ys zs:
   Sv.Equal xs ys
   -> disjoint xs zs
   -> disjoint ys zs.
 Proof.
-  move=> heq /Sv.is_empty_spec h. apply/Sv.is_empty_spec. SvD.fsetdec.
+  SvD.fsetdec.
 Qed.
 
 Lemma disjoint_equal_r xs ys zs:
@@ -327,28 +397,21 @@ Lemma disjoint_equal_r xs ys zs:
   -> disjoint ys zs
   -> disjoint xs zs.
 Proof.
-  move=> heq /Sv.is_empty_spec h. apply/Sv.is_empty_spec. SvD.fsetdec.
+  SvD.fsetdec.
 Qed.
 
 Lemma disjoint_union xs ys zs :
   disjoint (Sv.union xs ys) zs
   -> disjoint xs zs /\ disjoint ys zs.
 Proof.
- move=> /Sv.is_empty_spec H.
- split.
- all: apply/Sv.is_empty_spec.
- all: SvD.fsetdec.
+  SvD.fsetdec.
 Qed.
 
 Lemma disjoint_add x xs ys :
   disjoint (Sv.add x xs) ys
   -> disjoint (Sv.singleton x) ys /\ disjoint xs ys.
 Proof.
-  move=> /Sv.is_empty_spec h.
-  split.
-  all: apply/Sv.is_empty_spec.
-  all: move: h.
-  all: SvD.fsetdec.
+  SvD.fsetdec.
 Qed.
 
 Lemma union_disjoint xs ys zs :
@@ -356,21 +419,14 @@ Lemma union_disjoint xs ys zs :
   -> disjoint ys zs
   -> disjoint (Sv.union xs ys) zs.
 Proof.
-  rewrite /disjoint.
-  move=> /Sv.is_empty_spec h0.
-  move=> /Sv.is_empty_spec h1.
-  apply/Sv.is_empty_spec.
-  move: h0 h1.
-  clear.
   SvD.fsetdec.
 Qed.
 
 Lemma disjoint_singleton x s :
   disjoint (Sv.singleton x) s = ~~ Sv.mem x s.
 Proof.
-  case: disjointP; case: Sv_memP => //.
-  - move => H K; elim: (K _ _ H); SvD.fsetdec.
-  by move => H K; elim: K => y /Sv.singleton_spec ->.
+  apply eq_true_iff_eq. rewrite -!/(is_true _) -(rwP negP).
+  SvD.fsetdec.
 Qed.
 
 Lemma Sv_equal_add_add x s :
@@ -384,7 +440,7 @@ Proof. SvD.fsetdec. Qed.
 
 Lemma Sv_subset_remove s x :
   Sv.subset (Sv.remove x s) s.
-Proof. apply/Sv.subset_spec. by apply: SvP.MP.subset_remove_3. Qed.
+Proof. SvD.fsetdec. Qed.
 
 Lemma Sv_diff_empty s :
   Sv.Equal (Sv.diff s Sv.empty) s.
