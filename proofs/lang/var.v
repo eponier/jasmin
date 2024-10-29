@@ -220,14 +220,54 @@ Proof. by apply: sameP (Sv_memP x s) (Sv_elemsP x s). Qed.
 Definition disjoint s1 s2 := Sv.is_empty (Sv.inter s1 s2).
 
 Module SvD.
+  Ltac fsetdec_preprocess :=
+    unfold
+      disjoint, Sv.is_empty,
+      Sv.singleton, Sv.add, Sv.remove, Sv.union, Sv.inter, Sv.diff,
+      Sv.equal, Sv.subset, Sv.mem, Sv.Empty, Sv.Equal, Sv.Subset, Sv.In
+    in *;
+    rewrite /is_true ?bool_decide_eq_true.
   Ltac fsetdec :=
-    rewrite
-      /Sv.singleton /Sv.add /Sv.remove /Sv.union /Sv.inter /Sv.diff
-      /Sv.equal /Sv.subset /Sv.mem /Sv.Equal /Sv.Subset /Sv.In
-      /disjoint /Sv.is_empty /Sv.inter
-      /is_true ?bool_decide_eq_true;
-    set_solver.
+    fsetdec_preprocess; set_solver.
 End SvD.
+
+#[global]
+Instance eq_equiv : Equivalence Sv.Equal.
+Proof.
+  split=> //.
+  + red; SvD.fsetdec.
+  red; SvD.fsetdec.
+Qed.
+
+Instance In_compat : Proper (eq ==> Sv.Equal ==> iff) Sv.In.
+Proof.
+  move=> ??????.
+  SvD.fsetdec.
+Qed.
+
+Instance Subset_compat : Proper (Sv.Equal ==> Sv.Equal ==> iff) Sv.Subset.
+Proof.
+  move=> ??????.
+  SvD.fsetdec.
+Qed.
+
+Instance union_m : Proper (Sv.Equal ==> Sv.Equal ==> Sv.Equal) Sv.union.
+Proof.
+  move=> ??????.
+  SvD.fsetdec.
+Qed.
+
+Instance inter_m : Proper (Sv.Equal ==> Sv.Equal ==> Sv.Equal) Sv.inter.
+Proof.
+  move=> ??????.
+  SvD.fsetdec.
+Qed.
+
+Instance diff_m : Proper (Sv.Equal ==> Sv.Equal ==> Sv.Equal) Sv.diff.
+Proof.
+  move=> ??????.
+  SvD.fsetdec.
+Qed.
 
 #[global]
 Instance disjoint_m :
@@ -337,19 +377,6 @@ Proof.
   rewrite in_cons.
   move=> ->.
   exact: orbT.
-Qed.
-
-Instance eq_equiv : Equivalence Sv.Equal.
-Proof.
-  split=> //.
-  + red; SvD.fsetdec.
-  red; SvD.fsetdec.
-Qed.
-
-Instance union_m : Proper (Sv.Equal ==> Sv.Equal ==> Sv.Equal) Sv.union.
-Proof.
-  move=> ??; rewrite /Sv.Equal => ????.
-  SvD.fsetdec.
 Qed.
 
 Lemma sv_of_list_fold T f l s :

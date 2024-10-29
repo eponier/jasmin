@@ -328,8 +328,8 @@ Proof. rewrite Bool.eq_iff_eq_true /disjoint Bool.andb_true_iff !Sv.is_empty_spe
 Lemma disjoint_singletonE a b :
   disjoint (Sv.singleton a) b = ~~ Sv.mem a b.
 Proof.
-  rewrite Bool.eq_iff_eq_true /disjoint Sv.is_empty_spec Bool.negb_true_iff -SvD.F.not_mem_iff.
-  intuition SvD.fsetdec.
+  rewrite Bool.eq_iff_eq_true -!/(is_true _) -(rwP negP).
+  SvD.fsetdec.
 Qed.
 
 (* The contents of RSP and GD registers are preserved. *)
@@ -385,9 +385,9 @@ Lemma flags_not_magic :
 Proof.
   apply Sv.is_empty_spec => x X.
   have : vtype x = sword Uptr.
-  - have := SvD.F.inter_2 X.
-    rewrite /magic_variables SvD.F.add_iff Sv.singleton_spec.
-    by case => [ <- | -> ].
+  - have: Sv.In x (magic_variables p) by SvD.fsetdec.
+    rewrite /magic_variables Sv.add_spec Sv.singleton_spec.
+    by case => [ -> | -> ].
   by rewrite vflagsP //; SvD.fsetdec.
 Qed.
 
@@ -399,14 +399,18 @@ Proof.
   rewrite /Pfun !disjoint_unionE ih /=.
   rewrite /ra_vm /saved_stack_vm.
   apply/andP; split; last first.
-  + case: sf_save_stack ok_ss => //.
-    move=> /= r /and3P[] /eqP r_neq_gd /eqP r_neq_rsp _.
-    by rewrite /magic_variables /disjoint /is_true Sv.is_empty_spec /=; SvD.fsetdec.
+  + case: sf_save_stack ok_ss => /=.
+    + SvD.fsetdec.
+    + move=> /= r /and3P[] /eqP r_neq_gd /eqP r_neq_rsp _.
+      by rewrite /magic_variables /disjoint /is_true Sv.is_empty_spec /=; SvD.fsetdec.
+    move=> _ _; SvD.fsetdec.
   case: sf_return_address ok_ra => //.
   + rewrite disjoint_unionE => rax_not_magic.
     by apply/andP; split => //; apply: flags_not_magic.
   1: move=> r _ /= /and3P[] /eqP r_neq_gd /eqP r_neq_rsp _.
-  2: move=> [] //= r _ _ /andP[] /eqP r_neq_gd /eqP r_neq_rsp.
+  2: move=> [] /=.
+  2: move=> r _ _ /andP[] /eqP r_neq_gd /eqP r_neq_rsp.
+  3: move=> _ _ _; SvD.fsetdec.
   all: rewrite /magic_variables /disjoint /is_true Sv.is_empty_spec /=; SvD.fsetdec.
 Qed.
 

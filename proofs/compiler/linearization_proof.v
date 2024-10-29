@@ -3609,9 +3609,9 @@ Section PROOF.
     move: hnin.
     rewrite /saved_stack_vm /savedstackreg /=.
     case: sf_save_stack => [| r | ofs] hnin.
-    all: rewrite SvP.MP.add_union_singleton || rewrite Sv_union_empty.
-    all: repeat (move=> /Sv.add_spec [|] /=; first SvD.fsetdec).
-    all: SvD.fsetdec.
+    SvD.fsetdec.
+    SvD.fsetdec.
+    SvD.fsetdec.
   Qed.
 
   Lemma can_push (fd : sfundef) to_save lo hi vm1  s1 m1' m1 :
@@ -3900,7 +3900,7 @@ Section PROOF.
         have X' : set_RSP p m1' (kill_vars (ra_undef fd var_tmps) s1) <=1 vm.
         + apply: (vm_uincl_after_alloc_stack X EQ _ hgetrsp ok_m1').
           rewrite /= E1 /=.
-          rewrite -SvP.MP.add_union_singleton.
+(*           rewrite -SvP.MP.add_union_singleton. *)
           by apply: eq_exI hvm; rewrite /vrsp => /=; clear; SvD.fsetdec.
 
         have hle: (wunsigned (top_stack (emem s1)) <= wunsigned (top_stack m0))%Z.
@@ -4046,7 +4046,7 @@ Section PROOF.
             -> is_ok (get_var true vm1 x >>= of_val (vtype x))
             -> is_ok (get_var true vm2 x >>= of_val (vtype x)).
         + move=> x hx ok_x.
-          case: (SvP.MP.In_dec x (Sv.add var_tmp (Sv.add var_tmp2 (Sv.add vrsp vflags)))) => hin;
+          case: (Bool.reflect_dec _ _ (Sv_memP x (Sv.add var_tmp (Sv.add var_tmp2 (Sv.add vrsp vflags))))) => hin;
             last by rewrite /get_var (hvm2 _ hin).
           move: hin => /Sv.add_spec [? | hin].
           - by subst x; move: tmp_not_saved => /negP.
@@ -4249,7 +4249,11 @@ Section PROOF.
           have := lsem_trans4 hsem exec_save_to_stack E exec_restore_from_stack.
           by rewrite cats0 !size_cat /pop_to_save size_map.
         + move => x /Sv_memP; rewrite hvm5'.
-          rewrite SvP.diff_mem negb_and => /orP[]; last first.
+          have diff_mem: forall x s1 s2,
+            Sv.mem x (Sv.diff s1 s2) = Sv.mem x s1 && ~~ Sv.mem x s2.
+          + move=> x_ s1_ s2_. apply Bool.eq_iff_eq_true.
+            rewrite -!/(is_true _) -(rwP andP) -(rwP negP). clear. SvD.fsetdec.
+          rewrite diff_mem negb_and => /orP[]; last first.
           * move/negbNE; rewrite sv_of_list_map.
             have -> : (id \o fst) = fst by done.
             move=> /[dup] hin; rewrite sv_of_listE => hin'.
@@ -4263,17 +4267,24 @@ Section PROOF.
             move/mapP: hin' => -[[] /= a ofs hinx ?]; subst a.
             have := read_spilled x ofs; rewrite /to_save mem_cat hinx => -[] //.
             by rewrite hxty => ? [].
-          rewrite !SvP.union_mem Sv_mem_add SvP.empty_mem SvP.MP.singleton_equal_add.
-          rewrite Sv_mem_add SvP.empty_mem !orbA !orbF -!orbA.
+          have union_mem: forall x s1 s2, Sv.mem x (Sv.union s1 s2) = Sv.mem x s1 || Sv.mem x s2.
+          + move=> x_ s1_ s2_.
+            apply Bool.eq_iff_eq_true.
+            rewrite -!/(is_true _) -(rwP orP). clear. SvD.fsetdec.
+          rewrite !union_mem Sv_mem_add. (* SvP.empty_mem SvP.MP.singleton_equal_add. *)
+(*           rewrite Sv_mem_add (* SvP.empty_mem *) !orbA !orbF -!orbA. *)
+          rewrite -!orbA.
           case/norP => x_ni_k /norP[] x_neq_tmp2 /norP[] x_neq_tmp x_not_flag.
           rewrite (negbTE x_neq_tmp2).
           case: eqP => heq.
           + by subst x; rewrite vrsp_to_save; move/get_varP: ok_rsp => -[<- _ _].
           transitivity vm2.[x].
           + rewrite hvm2 // => /Sv.add_spec [?| /Sv.add_spec [?|]].
-            * by subst x; move: x_neq_tmp => /eqP.
+            * subst x; move: x_neq_tmp. move=> /Sv_memP. clear. SvD.fsetdec.
             * by subst x; move: x_neq_tmp2 => /eqP.
-            by move=> /Sv.add_spec [? |]; [ subst x | apply/Sv_memP].
+            move=> /Sv.add_spec [? |]; [ subst x | apply/Sv_memP]; move=> //.
+            move: x_not_flag.
+            rewrite -!/(is_true _) -!(rwP negP) -(rwP orP). clear. SvD.fsetdec.
           case: ifPn => // hnin.
           transitivity vm2'.[x]; last by apply/K4/Sv_memP.
           apply: hvm2'; rewrite -/var_tmp2 => /Sv.singleton_spec ?; subst x.
@@ -4372,7 +4383,7 @@ Section PROOF.
         rewrite (eval_jumpE ok_cbody) ok_pc /=.
         reflexivity.
       + apply: eq_exI K2.
-        exact: SvP.MP.union_subset_1.
+        clear. SvD.fsetdec.
       subst callee_saved; rewrite /kill_vars /=.
       move => ?; rewrite /set_RSP !Vm.setP; case: eqP => // ?.
       subst; move: (ok_vm2 vrsp).
@@ -4580,7 +4591,7 @@ Section PROOF.
       + by rewrite /is_linear_of ok_fd'; eauto.
       have X1 : set_RSP p m1' (kill_vars (ra_undef fd var_tmps) s1) <=1 vm1.
       + apply: vm_uincl_kill_vars_set_incl X => //.
-        + by SvD.fsetdec.
+(*         + by SvD.fsetdec. *)
         rewrite (alloc_stack_top_stack ok_m1') top_stack_after_aligned_alloc;  last by exact: sp_aligned.
         by rewrite wrepr_opp -/(stack_frame_allocation_size fd.(f_extra)).
       have D : disjoint_labels 2 lbl [:: P].

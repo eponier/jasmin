@@ -905,9 +905,10 @@ Lemma vrvP wdb gd (x:lval) v s1 s2 :
 Proof.
   case x => /= [ _ ty | ? /vrvP_var| al sz y e| al aa sz y e | aa sz len y e] //.
   + by move=> /write_noneP [->].
+  + apply:eq_exI. SvD.fsetdec.
   + by t_xrbindP => ptr yv hyv hptr ptr' ev hev hptr' w hw m hm <-.
-  + by apply: on_arr_varP; t_xrbindP => *; apply: vrvP_var; eauto.
-  by apply: on_arr_varP; t_xrbindP => *; apply: vrvP_var; eauto.
+  + apply: on_arr_varP; t_xrbindP => *. apply: eq_exI (vrvP_var _); eauto; SvD.fsetdec.
+  by apply: on_arr_varP; t_xrbindP => *; apply: eq_exI (vrvP_var _); eauto; SvD.fsetdec.
 Qed.
 
 Lemma vrvsP wdb gd xs vs s1 s2 :
@@ -1223,7 +1224,6 @@ Lemma write_var_eq_on1 wdb x v s1 s2 vm1:
 Proof.
   rewrite /write_var;t_xrbindP => vm2 hset <-.
   have [/= -> ? /=] := set_var_eq_on1 vm1 hset; eexists; eauto.
-  by rewrite !with_vm_idem.
 Qed.
 
 Lemma write_var_eq_on wdb X x v s1 s2 vm1:
@@ -1234,7 +1234,8 @@ Lemma write_var_eq_on wdb X x v s1 s2 vm1:
     evm s2 =[Sv.add x X] vm2.
 Proof.
   move=> /[dup] /(write_var_eq_on1 vm1) [vm2' hw2 h] hw1 hs.
-  exists vm2' => //; rewrite SvP.MP.add_union_singleton.
+  exists vm2' => //.
+  replace (Sv.add x X) with (Sv.union (Sv.singleton x) X) by SvD.fsetdec.
   apply: (eq_on_union hs h); [apply: vrvP_var hw1 | apply: vrvP_var hw2].
 Qed.
 
@@ -1247,7 +1248,9 @@ Lemma write_lval_eq_on1 wdb gd s1 s2 vm1 x v:
 Proof.
   case:x => [vi ty | x | al sz x e | al aa sz' x e | aa sz' len x e] /=.
   + by move=> _ /write_noneP [-> h1 h2]; rewrite /write_none h1 h2; exists vm1.
-  + by move=> _ /(write_var_eq_on1 vm1).
+  + move=> _ /(write_var_eq_on1 vm1).
+    replace (Sv.add x Sv.empty) with (Sv.singleton x) by SvD.fsetdec.
+    done.
   + rewrite read_eE => Hvm.
     rewrite -(get_var_eq_on wdb _ Hvm); last by SvD.fsetdec.
     rewrite (@read_e_eq_on wdb gd Sv.empty vm1 s1);first last.
@@ -1258,13 +1261,17 @@ Proof.
     rewrite (@read_e_eq_on _ gd (Sv.add x Sv.empty) vm1) /=;first last.
     + by apply: eq_onI Hvm;rewrite read_eE.
     apply: on_arr_varP => n t Htx; rewrite /on_arr_var => -> /=.
-    by t_xrbindP => > -> /= -> ? -> ? /= -> /= /(write_var_eq_on1 vm1).
+    t_xrbindP => > -> /= -> ? -> ? /= -> /= /(write_var_eq_on1 vm1).
+    replace (Sv.add x Sv.empty) with (Sv.singleton x) by SvD.fsetdec.
+    done.
   rewrite read_eE=> Hvm.
   rewrite (on_arr_var_eq_on _ (s' := with_vm s1 vm1) _ Hvm); last by SvD.fsetdec.
   rewrite (@read_e_eq_on _ gd (Sv.add x Sv.empty) vm1) /=;first last.
   + by apply: eq_onI Hvm;rewrite read_eE.
   apply: on_arr_varP => n t Htx; rewrite /on_arr_var => -> /=.
-  by t_xrbindP => > -> /= -> > -> ? /= -> /(write_var_eq_on1 vm1).
+  t_xrbindP => > -> /= -> > -> ? /= -> /(write_var_eq_on1 vm1).
+  replace (Sv.add x Sv.empty) with (Sv.singleton x) by SvD.fsetdec.
+  done.
 Qed.
 
 Lemma write_lval_eq_on wdb gd X x v s1 s2 vm1 :
@@ -1289,7 +1296,8 @@ Lemma write_lvals_eq_on wdb gd X xs vs s1 s2 vm1 :
     evm s2 =[Sv.union (vrvs xs) X] vm2.
 Proof.
   elim: xs vs X s1 s2 vm1 => [ | x xs Hrec] [ | v vs] //= X s1 s2 vm1.
-  + by move=> _ [<-] ?;exists vm1.
+  + move=> _ [<-] ?; exists vm1. done.
+    apply: eq_onI; try eassumption. rewrite /vrvs /=. SvD.fsetdec.
   rewrite read_rvs_cons => Hsub.
   t_xrbindP => s1' hw hws /(write_lval_eq_on _ hw) [ |vm1' -> hvm1'] /=; first by SvD.fsetdec.
   have [ |vm2 /= -> hvm2]:= Hrec _ _ _ _ _ _ hws hvm1';first by SvD.fsetdec.
@@ -1507,7 +1515,9 @@ Lemma sem_pexpr_uincl_on' wdb gd s vm' vm scs m e v1 :
   exists2 v2 : value,
                sem_pexpr wdb gd {| escs := scs; emem := m; evm := vm' |} e = ok v2 & value_uincl v1 v2.
 Proof.
-  rewrite read_eE => /(uincl_onI (SvP.MP.union_subset_1 _)) h1 h2.
+  rewrite read_eE.
+  have h: Sv.Subset (read_e e) (Sv.union (read_e e) s) by SvD.fsetdec.
+  move => /(uincl_onI h) h1 h2.
   by have /(_ _ h1) := sem_pexpr_uincl_on _ h2.
 Qed.
 
@@ -1517,7 +1527,9 @@ Lemma sem_pexprs_uincl_on' wdb gd es s scs m vm vm' vs1 :
   exists2 vs2,sem_pexprs wdb gd (Estate scs m vm') es = ok vs2 &
               List.Forall2 value_uincl vs1 vs2.
 Proof.
-  rewrite read_esE => /(uincl_onI (SvP.MP.union_subset_1 _)) h1 h2.
+  rewrite read_esE.
+  have h: Sv.Subset (read_es es) (Sv.union (read_es es) s) by SvD.fsetdec.
+  move => /(uincl_onI h) h1 h2.
   by have /(_ _ h1) := sem_pexprs_uincl_on _ h2.
 Qed.
 
@@ -1541,7 +1553,11 @@ Lemma write_var_uincl_on1 wdb s1 s2 vm1 v1 v2 (x : var_i) :
   exists2 vm2 : Vm.t,
     write_var wdb x v2 (with_vm s1 vm1) = ok (with_vm s2 vm2) &
     s2.(evm) <=[Sv.singleton x] vm2.
-Proof. by move=> hv /(write_var_uincl_on hv) -/(_ Sv.empty vm1); apply. Qed.
+Proof.
+  move=> hv /(write_var_uincl_on hv) -/(_ Sv.empty vm1).
+  replace (Sv.add x Sv.empty) with (Sv.singleton x) by SvD.fsetdec.
+  apply. done.
+Qed.
 
 Corollary write_var_uincl wdb s1 s2 vm1 v1 v2 (x : var_i) :
   s1.(evm) <=1 vm1 ->
@@ -1594,7 +1610,8 @@ Proof.
     rewrite /= ?read_eE; t_xrbindP=> Hvm1.
   + move=> H; have [-> _]:= write_noneP H.
     by rewrite (uincl_write_none _ Hv H); exists vm1.
-  + exact: write_var_uincl_on1.
+  + replace (Sv.add x Sv.empty) with (Sv.singleton x) by SvD.fsetdec.
+    exact: write_var_uincl_on1.
   + move: Hvm1 => /uincl_on_union_and[] /sem_pexpr_uincl_on Hvme Hvmx >
       /get_var_uincl_at -/(_ vm1) /[swap] /to_wordI[? [? [-> /word_uincl_truncate h]]] [].
     * by apply: Hvmx; SvD.fsetdec.

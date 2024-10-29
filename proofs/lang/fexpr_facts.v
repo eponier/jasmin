@@ -14,6 +14,7 @@ Proof.
   rewrite /free_vars.
   elim: e s => //=.
   - move => *; SvD.fsetdec.
+  - move => *; SvD.fsetdec.
   - move => _ f1 ih1 f2 ih2 s; rewrite ih2 ih1 (ih2 (free_vars f1)); SvD.fsetdec.
   move => f1 ih1 f2 ih2 f3 ih3 s.
   rewrite ih3 ih2 ih1 (ih3 (free_vars_rec _ _)) (ih2 (free_vars _)).
@@ -26,8 +27,7 @@ Lemma free_vars_rec_of_pexpr e f s :
 Proof.
   elim: e f s => //=.
   - by move => > /Some_inj <-.
-  - case => x [] // > /Some_inj <-.
-    exact: SvP.MP.add_union_singleton.
+  - case => x [] // > /Some_inj <-. SvD.fsetdec.
   - move => op e ih ? s /obindI[] f [] /ih{}ih /Some_inj <-.
     exact: ih.
   - move => op e1 ih1 e2 ih2 f s /obindI[] f1 [] /ih1{}ih1 /obindI[] f2 [] /ih2{}ih2 /Some_inj <- /=.

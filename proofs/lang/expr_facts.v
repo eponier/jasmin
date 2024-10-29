@@ -274,7 +274,8 @@ Proof. rewrite {1}/write_c /= write_c_recE write_I_recE; clear; SvD.fsetdec. Qed
 
 Lemma write_c_app c1 c2 :
   Sv.Equal (write_c (c1 ++ c2)) (Sv.union (write_c c1) (write_c c2)).
-Proof. by elim: c1 => //= i c1 Hrec;rewrite !write_c_cons; clear -Hrec; SvD.fsetdec. Qed.
+Proof. elim: c1 => //=. rewrite {2}/write_c /=. SvD.fsetdec.
+  move=> i c1 Hrec;rewrite !write_c_cons; clear -Hrec. SvD.fsetdec. Qed.
 
 Lemma write_i_assgn x tag ty e : write_i (Cassgn x tag ty e) = vrv x.
 Proof. done. Qed.
@@ -325,7 +326,7 @@ Lemma read_e_esE :
   (∀ es s, Sv.Equal (read_es_rec s es) (Sv.union (read_es es) s)).
 Proof.
   apply: pexprs_ind_pair;
-  split => //= [ e He es Hes | v | al aa w v e He | aa w len v e He | al w v e He | o e1 He1 e2 He2 | t e He e1 He1 e2 He2 ] s;
+  split => //= [ ? | e He es Hes | | | | v | al aa w v e He | aa w len v e He | al w v e He | o e1 He1 e2 He2 | t e He e1 He1 e2 He2 ] s;
     rewrite /read_e /= ?He ?He1 ?He2; try (clear; SvD.fsetdec).
   rewrite /read_es /= -/read_e Hes He Hes; clear; SvD.fsetdec.
 Qed.
@@ -709,10 +710,11 @@ Section EQ_EXPR_READ_E.
     suff : (∀ e e', eq_expr e e' → Sv.Equal (read_e e) (read_e e'))
            ∧ (∀ es es', all2 eq_expr es es' → Sv.Equal (read_es es) (read_es es')) by case; eauto.
     clear; apply: pexprs_ind_pair; split => //
-    [|e he es hes|?|?|?|?|??????|??????|?????|???|?????|? es hes|???????] [] //= >;
+    [|e he es hes|?|?|?|?|??????|??????|???? hes|???|?????|? es hes|???????] [] //= >;
     try by t_solve.
     - by rewrite !read_es_cons => /andP[] /he -> /hes ->.
     - by move => /eq_gvar_read_gvar; rewrite /read_e /= => ->.
+    - rewrite /read_e /= !read_eE. move=> /andP[] /andP[] _ /eqP -> /hes ->. done.
     by rewrite /read_e /= -/read_es_rec !read_esE => /andP[] _ /hes ->.
   Qed.
 

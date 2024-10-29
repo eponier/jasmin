@@ -4,7 +4,7 @@ Require Import psem compiler_util.
 Require Export constant_prop.
 
 Import Utf8 ZArith Morphisms Classes.RelationClasses.
-Import RelationPairs.
+Require Import Classes.RelationPairs.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -708,13 +708,36 @@ Lemma remove_cpm_spec (m : cpm) (xs : Sv.t) (x : CmpVar.t):
   | None   => Mvar.get m x = None \/ Sv.In x xs
   end.
 Proof.
-  rewrite /remove_cpm;apply SvP.MP.fold_rec_bis.
-  + move=> s s' a Heq.
-    by case: Mvar.get=> [? [] ??| [? | ?]]; [split=> //;SvD.fsetdec | left | right;SvD.fsetdec].
-  + by case: Mvar.get=> [? | ]; [ split => //;SvD.fsetdec | left].
-  move=> ?????;rewrite Mvar.removeP;case:ifPn => /eqP Heq.
-  + by rewrite Heq=> _;right;SvD.fsetdec.
-  by case: Mvar.get=> [? [] ??| [?|?]];[split=> //;SvD.fsetdec | left | SvD.fsetdec].
+  rewrite /remove_cpm. rewrite Sv.fold_spec.
+  have:
+    match Mvar.get (List.fold_left (Basics.flip (λ (x0 : Sv.elt) (m0 : cpm), Mvar.remove m0 x0)) (Sv.elements xs) m) x with
+    | Some n => Mvar.get m x = Some n ∧ x \notin (Sv.elements xs)
+    | None => Mvar.get m x = None ∨ x \in (Sv.elements xs)
+    end.
+  + elim: (Sv.elements xs) m => /=.
+    + move=> m.
+      case: Mvar.get.
+      + move=> ?; split=> //.
+      by left.
+    move=> y l ih m.
+    have := ih (Mvar.remove m y).
+    case: Mvar.get.
+    + move=> ?. rewrite Mvar.removeP.
+      case: ifPn.
+      + by move=> _ [].
+      move=> hneq [hget hnin].
+      split=> //. rewrite in_cons. by rewrite negb_or eq_sym hneq.
+    move=> [].
+    + rewrite Mvar.removeP.
+      case: ifP.
+      + move=> h _. right. rewrite in_cons eq_sym h. done.
+      by move=> _ ?; left.
+    move=> h. right. rewrite in_cons h orbT. done.
+  case: Mvar.get.
+  + move=> ? [h1 h2]; split=> //. by apply /Sv_elemsP.
+  move=> [].
+  + move=> ?; left. done.
+  by move=> ?; right; apply /Sv_elemsP.
 Qed.
 
 Lemma remove_cpm2 m xs : Mvar_eq (remove_cpm (remove_cpm m xs) xs) (remove_cpm m xs).
@@ -1094,8 +1117,7 @@ Section PROOF.
     move: hw => /=; t_xrbindP => s' hw ?; subst s'.
     case: (b) hw => hw; econstructor; eauto.
     + by rewrite /sem_sopn /= hve /= /exec_sopn /= hvez /= hw.
-    + by rewrite /= /sem_sop1 /= wrepr_unsigned.
-    by rewrite /truncate_val /= truncate_word_u.
+    rewrite /=. rewrite /truncate_val /= truncate_word_u /= wrepr_unsigned. done.
   Qed.
 
   Local Lemma Hsyscall : sem_Ind_syscall p Pi_r.
@@ -1245,7 +1267,8 @@ Section PROOF.
     have /(Hf _ Heqm) Hc'': valid_cpm (evm s2) m.
     + have -> := valid_cpm_m (refl_equal (evm s2)) Heqm.
       apply: valid_cpm_rm Hm'=> z Hz;apply: (writeP Hsemc);SvD.fsetdec.
-    have /(_ _ _ (value_uincl_refl _)) [vm1' hw hvm1'] := write_var_uincl hvm1 _ Hw.
+(*     have := write_var_uincl hvm1 _ Hw. *)
+    have /(_ _ (value_uincl_refl _)) [vm1' hw hvm1'] := write_var_uincl hvm1 _ Hw.
     have [vm2 [hc' /Hc'' [vm3 [hfor U]]]]:= Hc' _ hvm1';exists vm3;split => //.
     by apply: EForOne hc' hfor.
   Qed.
